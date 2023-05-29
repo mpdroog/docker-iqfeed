@@ -7,7 +7,7 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US.UTF-8
 
 # Creating the wine user and setting up dedicated non-root environment
-RUN useradd -u 1001 -d /home/wine -m -s /bin/bash wine
+RUN useradd -u 1001 -d /home/wine -m -s /bin/sh wine
 ENV HOME /home/wine
 WORKDIR /home/wine
 
@@ -55,6 +55,11 @@ ADD cache/$IQFEED_INSTALLER_BIN /home/wine/$IQFEED_INSTALLER_BIN
 RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && wineserver --wait
 RUN wine64 reg add HKEY_CURRENT_USER\\\Software\\\DTN\\\IQFeed\\\Startup /t REG_DWORD /v LogLevel /d $IQFEED_LOG_LEVEL /f && wineserver --wait
 ADD uptool/iqapi /home/wine/iq-api
+
+# Correct X-perm warn
+USER root
+RUN chown root:root /tmp/.X11-unix
+USER wine
 
 EXPOSE 9101
 

@@ -24,9 +24,14 @@ The proxy is there to be sure the connection works before offering it (solving t
 
 http://www.iqfeed.net/dev/api/docs//Introduction.cfm (Socket Connections)
 
+Difference with regular port 9100
+=========
+Instead of waiting for the client to send the first message the server initiated it by
+either directly sending an error (i.e. `E,NO_ADMIN\r\n"`) or sending `READY\r\n`
+
 User privilege
 =========
-Dockerfile instructs
+All is ran as user wine (uid 1001)
 
 Logic
 =========
@@ -46,3 +51,20 @@ iqapi is a blocking-process that writes everything to stdout+stderr so Docker sh
  
 This project was built using:
 https://github.com/jaikumarm/docker-iqfeed
+
+Errors?
+=========
+```
+E,NO_DAEMON = iqfeed.exe not running (yet)
+E,NO_ADMIN = admin(port 9300) did not give a Connected-status (yet)
+E,PARSE_DURATION = failed parsing time.ParseDuration, this is a dev bug!
+E,CONN_SET_DEADLINE = failed configuring deadline on client socket
+E,UPSTREAM CONN_TIMEOUT = failed connecting to iqfeed (socket 9100)
+E,UPSTREAM_T = failed writing TEST-cmd to upstream to check if connection is ready
+E,UPSTREAM_T_RES = failed reading upstream TEST-cmd reply
+E,UPSTREAM_T_INV = invalid upstream response for TEST-cmd
+E,UPSTREAM SET_DEADLINE = failed configuring deadline on upstream socket
+E,CONN_READ_CMD = failed reading client command
+E,UPSTREAM_W = failed writing client command to upstream
+E,UPSTREAM_R = failed reading reply from upstream
+```
