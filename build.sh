@@ -15,4 +15,4 @@ cd -
 # Build the container
 docker build --tag 'docker-iqfeed' .
 # Run it
-docker run -p 9100:9101 --rm --env-file iqfeed.env docker-iqfeed
+docker run -p 9100:9101 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env docker-iqfeed
