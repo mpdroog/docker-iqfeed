@@ -54,6 +54,8 @@ $ curl "http://localhost:8080/ohlc?asset=MSTR&range=DAILY&datapoints=1"
 ]
 ```
 
+For all accepted HTTP-endpoints there is a human-readable overview on http://localhost:8080
+
 TCP example
 =========
 ```bash
@@ -70,6 +72,8 @@ LH,2023-05-26,111.1100,111.1000,111.1000,111.1000,111111,0,
 quit
 Connection closed by foreign host.
 ```
+
+For all accepted commands by IQFeed have a look at http://www.iqfeed.net/dev/api/docs//MarketDepth.cfm
 
 Difference with regular port 9100
 =========
