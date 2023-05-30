@@ -1,46 +1,91 @@
 docker-iqfeed
 ===============
-A Ubuntu-docker container with Wine/IQFeed to access the IQFeed-API
-with it's high quality OHLC-data.
+Access IQFeed datafeed through TCP (port 9100) or HTTP (port 8080);
 
-A small self-written tool (uptool/iqapi) is used to keep all processes
- inside this container running (think supervisor) and prepare sockets
- for optimal usage (trying to prevent timeouts in your tools)
+This is a Ubuntu-docker container that runs wine/Xvfb/IQFeed and offer this as TCP/HTTP-endpoint.
 
-In this rootfolder is a file (build.sh) that builds a Docker container and
-spawns an instance once it's been built.
+Usage container
+=========
+Copy the `iqfeed.env.example` to `iqfeed.env` and configure the variables to match as supplied by IQFeed.
+
+Next run `build.sh`
+```bash
+#!/bin/bash
+set -euo pipefail
+IFS=$'\n\t'
+IQFEED_INSTALLER_BIN="iqfeed_client_6_2_0_25.exe"
+
+# Download IQFeed binary (so we only download it once)
+mkdir cache
+wget -nv http://www.iqfeed.net/$IQFEED_INSTALLER_BIN -O ./cache/$IQFEED_INSTALLER_BIN
+
+# Build the API-tool (you need Golang for this)
+cd uptool
+env GOOS=linux GOARCH=amd64 go build
+cd -
+
+# Build the container
+docker build --tag 'docker-iqfeed' .
+# Run it
+docker run -p 9100:9101 -p 8080:8080 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env docker-iqfeed
+```
 
 Ports
 =========
-This daemon only exposes LookupPort(9100 => Historical Data, Symbol Lookup, News Lookup, and Chains Lookup information)
-It has a simple TCP-daemon implemented with only Historical Data feeds tested.
+This daemon offers the 'classic' TCP connection (9100) and HTTP (8080) for getting the ticker data out.
 
 ```
-LookupPort 9101
+LookupPort 9100 - Historical Data, Symbol Lookup, News Lookup, and Chains Lookup information
+HTTP 8080 - Historical Data
 ```
 
-The available ports are +1 compared to IQFeed, we do this as we proxy between 127.0.0.1:9100 and 0:9101;
-The proxy is there to be sure the connection works before offering it (solving timeouts for the container user)
+HTTP example
+=========
+```bash
+$ curl "http://localhost:8080/ohlc?asset=MSTR&range=DAILY&datapoints=1"
+[
+  {
+    "Close": "111.1100",
+    "Datetime": "2023-05-26",
+    "High": "111.1000",
+    "Low": "111.1000",
+    "Open": "111.1000"
+  }
+]
+```
 
-http://www.iqfeed.net/dev/api/docs//Introduction.cfm (Socket Connections)
+TCP example
+=========
+```bash
+$ telnet 0 9100
+Trying 0.0.0.0...
+Connected to 0.
+Escape character is '^]'.
+READY
+S,SET PROTOCOL,6.2
+S,CURRENT PROTOCOL,6.2
+HDX,MSTR,1
+LH,2023-05-26,111.1100,111.1000,111.1000,111.1000,111111,0,
+!ENDMSG!,
+quit
+Connection closed by foreign host.
+```
 
 Difference with regular port 9100
 =========
-Instead of waiting for the client to send the first message the server initiated it by
+Instead of waiting for the client to send the first message the server initiates it by
 either directly sending an error (i.e. `E,NO_ADMIN\r\n"`) or sending `READY\r\n`
-
-User privilege
-=========
-All is ran as user wine (uid 1001)
 
 Logic
 =========
 The iqapi-tool is a combination of services allowing us to build layer on layer with precise control.
 
+```
 Layer1. Start xvfb
 Layer2. Start wine64 iqfeed
 Layer3. Start and listen on admin-conn (9300)
-Layer4. Start and listen for your reqs (9101)
+Layer4. Start and listen for your reqs (9100)
+```
 
 (i) When xvfb crashes it will respawn xvfb and only respawn iqfeed when xvfb is running again.
 
@@ -48,11 +93,21 @@ Logs?
 =========
 iqapi is a blocking-process that writes everything to stdout+stderr so Docker should offer all
  of that to your standard logging facility (probably journal on systemd env).
- 
-This project was built using:
-https://github.com/jaikumarm/docker-iqfeed
 
-Errors?
+There is an IQFeed errorlog available in the container:
+```bash
+docker ps
+CONTAINER ID   IMAGE           COMMAND               CREATED          STATUS          PORTS                                            NAMES
+.....
+
+docker exec -it PUT_CONTAINER_ID_HERE /bin/sh
+# Print current instance log
+cat /home/wine/DTN/IQFeed/IQConnectLog.txt
+# Print log of instance before it respawned
+cat /home/wine/DTN/IQFeed/IQConnectLog.txt.1
+```
+
+Errors for TCP-socket?
 =========
 ```
 E,NO_DAEMON = iqfeed.exe not running (yet)
@@ -68,3 +123,8 @@ E,CONN_READ_CMD = failed reading client command
 E,UPSTREAM_W = failed writing client command to upstream
 E,UPSTREAM_R = failed reading reply from upstream
 ```
+
+Credits
+=========
+This project was built using:
+https://github.com/jaikumarm/docker-iqfeed
