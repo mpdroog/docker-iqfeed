@@ -9,7 +9,12 @@ Usage container
 Copy the `iqfeed.env.example` to `iqfeed.env` and configure the variables to match as supplied by IQFeed.
 https://github.com/mpdroog/docker-iqfeed/blob/main/iqfeed.env.example
 
-Next run `build.sh`
+Next pull this project from hub.docker
+```bash
+docker pull mpdroog/docker-iqfeed
+```
+
+OR build it yourself with `build.sh`
 ```bash
 #!/bin/bash
 set -euo pipefail
@@ -78,8 +83,9 @@ For all accepted commands by IQFeed have a look at http://www.iqfeed.net/dev/api
 
 Difference with regular port 9100
 =========
-Instead of waiting for the client to send the first message the server initiates it by
-either directly sending an error (i.e. `E,NO_ADMIN\r\n"`) or sending `READY\r\n`
+The TCP-server in this Docker container proxy's any commands to IQFeed (upstream). Because of this I've
+adjusted the code to send an `READY\r\n` from the server instead of waiting for the client to initiate the connection.
+(Motivation is that this way you can see why it failed)
 
 Logic
 =========
