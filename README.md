@@ -79,7 +79,7 @@ quit
 Connection closed by foreign host.
 ```
 
-For all accepted commands by IQFeed have a look at http://www.iqfeed.net/dev/api/docs//MarketDepth.cfm
+For all accepted commands by IQFeed have a look at http://www.iqfeed.net/dev/api/docs/HistoricalviaTCPIP.cfm
 
 Difference with regular port 9100
 =========
