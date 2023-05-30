@@ -7,6 +7,7 @@ This is a Ubuntu-docker container that runs wine/Xvfb/IQFeed and offer this as T
 Usage container
 =========
 Copy the `iqfeed.env.example` to `iqfeed.env` and configure the variables to match as supplied by IQFeed.
+https://github.com/mpdroog/docker-iqfeed/blob/main/iqfeed.env.example
 
 Next run `build.sh`
 ```bash
