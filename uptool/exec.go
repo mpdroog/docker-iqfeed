@@ -14,8 +14,11 @@ import (
 type CmdInfo struct {
 	Cmd  string
 	Args []string
+	Dep  string
 
-	Dep string
+	// Post-processing
+	PostCmd  string
+	PostArgs []string
 }
 
 /** run executes a command and stores if it's running after 1sec in the Running-map */
@@ -26,10 +29,8 @@ func run(name, path string, flags []string) error {
 	}
 
 	ctxb := context.Background()
-	ctx, cancel := context.WithTimeout(ctxb, 1*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, path, flags...)
+	// DevNote: yes no context timeout as we want to run as long as possible
+	cmd := exec.CommandContext(ctxb, path, flags...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stdout
 
@@ -94,6 +95,13 @@ func ensureRunning(wg *sync.WaitGroup, cmds map[string]CmdInfo) {
 				e := run(name, info.Cmd, info.Args)
 				if e != nil {
 					fmt.Printf("[%s] %s\n", name, e.Error())
+				}
+
+				if len(info.PostCmd) > 0 {
+					// Run something after the process stopped
+					if e := run(name, info.PostCmd, info.PostArgs); e != nil {
+						fmt.Printf("[%s-post] %s\n", name, e.Error())
+					}
 				}
 
 				/*if time.Now().Unix()-lastSleep < 10 {
