@@ -12,6 +12,11 @@ import (
  * connection is Connected and else sends a Connect */
 func admin() {
 	init := true
+	dur, e := time.ParseDuration("10s")
+	if e != nil {
+		fmt.Printf("[keepAlive parseDuration]: %s\n", e.Error())
+		panic("DevErr")
+	}
 
 	for {
 		if init == false {
@@ -41,7 +46,7 @@ func admin() {
 			fmt.Printf("[admin] connect\n")
 		}
 		// Keep alive conn
-		conn, e := net.Dial("tcp", "127.0.0.1:9300")
+		conn, e := net.DialTimeout("tcp", "127.0.0.1:9300", defaultConnectTimeout)
 		if e != nil {
 			fmt.Printf("[admin.Dial] e=%s\n", e.Error())
 			continue
@@ -51,6 +56,13 @@ func admin() {
 
 		// Check if conn working
 		{
+			deadline := time.Now().Add(dur)
+			if e := conn.SetDeadline(deadline); e != nil {
+				conn.Close()
+				fmt.Printf("[admin setDeadline]: %s\n", e.Error())
+				continue
+			}
+
 			if _, e := conn.Write([]byte("T\r\n")); e != nil {
 				conn.Close() // TODO: err?
 				fmt.Printf("[admin.WriteT] e=%s\n", e.Error())
@@ -67,36 +79,29 @@ func admin() {
 			}
 		}
 
-		connectCount := 0
-		firstPkg := true
 		for {
-			line, _, e := c.ReadLine()
+			deadline := time.Now().Add(dur)
+			if e := conn.SetDeadline(deadline); e != nil {
+				fmt.Printf("[admin for->setDeadline]: %s\n", e.Error())
+				break
+			}
+
+			bin, _, e := c.ReadLine()
+			bin = bytes.TrimSpace(bin)
 			if e != nil {
 				fmt.Printf("[admin.WriteTS] e=%s\n", e.Error())
 				break
 			}
 			if Verbose {
-				fmt.Printf("[admin.ReadLine] %s\n", line)
+				fmt.Printf("[admin.ReadLine] %s\n", bin)
 			}
 
 			// S,STATS,,,0,0,1,0,0,0,,,Not Connected,6.2.0.25,\"490914\",0,0.0,0.0,0.08,0.08,0.08,
-			if bytes.HasPrefix(line, []byte("S,STATS")) {
-				tok := bytes.SplitN(line, []byte(","), 16)
+			if bytes.HasPrefix(bin, []byte("S,STATS")) {
+				tok := bytes.SplitN(bin, []byte(","), 16)
 				if bytes.Equal(tok[12], []byte("Not Connected")) {
-					if _, e := conn.Write([]byte("S,CONNECT\r\n")); e != nil {
-						fmt.Printf("[admin.Write CONNECT] e=%s\n", e.Error())
-						break
-					}
-					if Verbose {
-						fmt.Printf("[admin.Write] >> S,CONNECT\n")
-					}
-					if connectCount >= 10 {
-						fmt.Printf("[admin.Timeout] failed connecting (10 attempts)\n")
-						break
-					}
-					connectCount++
-				} else if firstPkg && bytes.Equal(tok[12], []byte("Connected")) {
-					firstPkg = false
+					Running.Delete("admin")
+				} else if bytes.Equal(tok[12], []byte("Connected")) {
 					Running.Store("admin", struct{}{})
 				}
 			}
