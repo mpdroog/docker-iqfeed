@@ -40,7 +40,7 @@ func main() {
 
 	// Config for all cmds
 	cmds := map[string]CmdInfo{
-		"xvfb": CmdInfo{Dep: "", Cmd: "/usr/bin/Xvfb", Args: []string{":0", "-screen", "0", "1024x768x24"}},
+		"xvfb": CmdInfo{Dep: "", Cmd: "/usr/bin/Xvfb", Args: []string{":0", "-screen", "0", "1024x768x24", "-noreset"}},
 		"iqfeed": CmdInfo{Dep: "xvfb", Cmd: "wine64", Args: []string{
 			"/home/wine/.wine/drive_c/Program Files/DTN/IQFeed/iqconnect.exe",
 			"-product", prod,
@@ -48,7 +48,7 @@ func main() {
 			"-login", login,
 			"-password", pass,
 			"-autoconnect",
-		}},
+		}, PostCmd: "mv", PostArgs: []string{"/home/wine/DTN/IQFeed/IQConnectLog.txt", "/home/wine/DTN/IQFeed/IQConnectLog.txt.1"}},
 	}
 	if Verbose {
 		fmt.Printf("exec=%+v\n", cmds)
@@ -59,13 +59,7 @@ func main() {
 
 	// Reap processing for PID1
 	if reap.IsSupported() {
-		pids := make(reap.PidCh, 1)
-		errors := make(reap.ErrorCh, 1)
-		done := make(chan struct{})
-		var reapLock sync.RWMutex
-		go reap.ReapChildren(pids, errors, done, &reapLock)
-		// TODO: Log reaped children?
-		close(done)
+		go reap.ReapChildren(nil, nil, nil, nil)
 	} else {
 		fmt.Println("WARN: go-reap isn't supported on your platform")
 	}
@@ -75,20 +69,26 @@ func main() {
 
 	ensureRunning(&wg, cmds)
 
-	// TODO: Remaining is TCP-proxy that keeps conn in shape before offering
-
-	// admin-port
+	// Admin monitoring
 	go admin()
+	// Client that keeps everything open
+	go keepalive("127.0.0.1:5009")
+	// HTTP-server
+	go httpListen(":8080")
 
-	server, e := tcpserver.NewServer(":9101")
-	if e != nil {
-		fmt.Println(e)
-		return
+	// TCP-server
+	{
+		server, e := tcpserver.NewServer(":9101")
+		if e != nil {
+			fmt.Println(e)
+			return
+		}
+
+		server.SetRequestHandler(tcpProxy)
+		server.Listen()
+		server.Serve()
 	}
 
-	server.SetRequestHandler(tcpProxy)
-	server.Listen()
-	server.Serve()
-
+	// Wait for child processes to exit
 	wg.Wait()
 }
