@@ -1,6 +1,5 @@
 # Build using Alpine +- 900MB
 FROM alpine:latest
-MAINTAINER mpdroog "github.com/mpdroog/docker-iqfeed"
 LABEL description="IQFeed Historical data TCP+HTTP API"
 
 # Creating the wine user and setting up dedicated non-root environment
@@ -18,8 +17,7 @@ ENV IQFEED_LOG_LEVEL 0xB222
 # Hide all warning
 ENV WINEDEBUG -all
 
-RUN ["apk", "--no-cache", "--allow-untrusted", "-v", "add", "wine", "xvfb", "xvfb-run"]
-RUN wget http://winetricks.org/winetricks && chmod +x winetricks && mv winetricks /usr/bin/winetricks
+RUN apk --no-cache add wine xvfb xvfb-run && wget http://winetricks.org/winetricks && chmod +x winetricks && mv winetricks /usr/bin/winetricks
 
 USER wine
 # Init wine instance
@@ -29,8 +27,7 @@ RUN winecfg && wineserver --wait
 ADD cache/$IQFEED_INSTALLER_BIN /home/wine/$IQFEED_INSTALLER_BIN
 
 # Install iqfeed client
-RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && wineserver --wait
-RUN wine64 reg add HKEY_CURRENT_USER\\\Software\\\DTN\\\IQFeed\\\Startup /t REG_DWORD /v LogLevel /d $IQFEED_LOG_LEVEL /f && wineserver --wait
+RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && wineserver --wait && wine64 reg add HKEY_CURRENT_USER\\\Software\\\DTN\\\IQFeed\\\Startup /t REG_DWORD /v LogLevel /d $IQFEED_LOG_LEVEL /f && wineserver --wait && rm /home/wine/$IQFEED_INSTALLER_BIN
 ADD uptool/iqapi /home/wine/iq-api
 
 # Correct X-perm warn
@@ -39,5 +36,9 @@ RUN chown root:root /tmp/.X11-unix
 USER wine
 
 EXPOSE 9101
+EXPOSE 8080
+ENV PROD=
+ENV LOGIN=
+ENV PASS=
 
 CMD ["/home/wine/iq-api"]
