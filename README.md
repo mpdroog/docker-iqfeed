@@ -2,7 +2,7 @@ docker-iqfeed
 ===============
 Access IQFeed datafeed through TCP (port 9100) or HTTP (port 8080);
 
-This is a Ubuntu-docker container that runs wine/Xvfb/IQFeed and offer this as TCP/HTTP-endpoint.
+This is an Alpine-docker container that runs wine/Xvfb/IQFeed and offer this as TCP/HTTP-endpoint.
 
 Usage container
 =========
@@ -11,7 +11,7 @@ https://github.com/mpdroog/docker-iqfeed/blob/main/iqfeed.env.example
 
 Next pull this project from hub.docker
 ```bash
-docker pull mpdroog/docker-iqfeed
+docker pull mpdroog/docker-iqfeed:latest
 ```
 
 OR build it yourself with `build.sh`
@@ -25,15 +25,15 @@ IQFEED_INSTALLER_BIN="iqfeed_client_6_2_0_25.exe"
 mkdir cache
 wget -nv http://www.iqfeed.net/$IQFEED_INSTALLER_BIN -O ./cache/$IQFEED_INSTALLER_BIN
 
-# Build the API-tool (you need Golang for this)
+# Build the API-tool
 cd uptool
 env GOOS=linux GOARCH=amd64 go build
 cd -
 
 # Build the container
-docker build --tag 'docker-iqfeed' .
+docker build --tag 'mpdroog/docker-iqfeed:latest' -f Dockerfile .
 # Run it
-docker run -p 9100:9101 -p 8080:8080 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env docker-iqfeed
+docker run -p 9100:9101 -p 8080:8080 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env mpdroog/docker-iqfeed
 ```
 
 Ports

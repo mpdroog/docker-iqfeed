@@ -1,0 +1,67 @@
+# Build using ubuntu +- 3GB
+FROM ubuntu:kinetic
+
+# Base env
+ENV DEBIAN_FRONTEND noninteractive
+ENV LC_ALL C.UTF-8
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US.UTF-8
+
+# Creating the wine user and setting up dedicated non-root environment
+RUN useradd -u 1001 -d /home/wine -m -s /bin/sh wine
+ENV HOME /home/wine
+WORKDIR /home/wine
+
+ENV WINEPREFIX /home/wine/.wine
+ENV DISPLAY :0
+
+# iqfeed config
+ENV IQFEED_INSTALLER_BIN="iqfeed_client_6_2_0_25.exe"
+ENV IQFEED_LOG_LEVEL 0xB222
+
+# Hide all warning
+ENV WINEDEBUG -all
+
+RUN \
+    dpkg --add-architecture i386 && \
+    apt-get update && apt-get upgrade -yq && \
+    apt-get install -yq --no-install-recommends \
+        software-properties-common apt-utils xvfb wget tar gpg-agent && \
+    # Cleaning up.
+    apt-get autoremove -y --purge && \
+    apt-get clean -y && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+RUN \
+    # Install winehq-stable    
+    wget -O - https://dl.winehq.org/wine-builds/winehq.key | apt-key add - && \
+    add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ kinetic main' && \
+    apt-get update && apt-get install -yq --no-install-recommends winehq-stable && \
+    apt-get install -yq --no-install-recommends winbind winetricks cabextract && \
+    wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks && \
+	chmod +x winetricks && mv winetricks /usr/local/bin && \
+    # Cleaning up.
+    apt-get autoremove -y --purge && \
+    apt-get clean -y && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+USER wine
+# Init wine instance
+RUN winecfg && wineserver --wait
+# Download iqfeed client
+#RUN wget -nv http://www.iqfeed.net/$IQFEED_INSTALLER_BIN -O /home/wine/$IQFEED_INSTALLER_BIN
+ADD cache/$IQFEED_INSTALLER_BIN /home/wine/$IQFEED_INSTALLER_BIN
+
+# Install iqfeed client
+RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && wineserver --wait
+RUN wine64 reg add HKEY_CURRENT_USER\\\Software\\\DTN\\\IQFeed\\\Startup /t REG_DWORD /v LogLevel /d $IQFEED_LOG_LEVEL /f && wineserver --wait
+ADD uptool/iqapi /home/wine/iq-api
+
+# Correct X-perm warn
+USER root
+RUN chown root:root /tmp/.X11-unix
+USER wine
+
+EXPOSE 9101
+
+CMD ["/home/wine/iq-api"]

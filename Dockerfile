@@ -1,13 +1,10 @@
-FROM ubuntu:kinetic
-
-# Base env
-ENV DEBIAN_FRONTEND noninteractive
-ENV LC_ALL C.UTF-8
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US.UTF-8
+# Build using Alpine +- 900MB
+FROM alpine:latest
+MAINTAINER mpdroog "github.com/mpdroog/docker-iqfeed"
+LABEL description="IQFeed Historical data TCP+HTTP API"
 
 # Creating the wine user and setting up dedicated non-root environment
-RUN useradd -u 1001 -d /home/wine -m -s /bin/sh wine
+RUN adduser -D wine
 ENV HOME /home/wine
 WORKDIR /home/wine
 
@@ -21,28 +18,8 @@ ENV IQFEED_LOG_LEVEL 0xB222
 # Hide all warning
 ENV WINEDEBUG -all
 
-RUN \
-    dpkg --add-architecture i386 && \
-    apt-get update && apt-get upgrade -yq && \
-    apt-get install -yq --no-install-recommends \
-        software-properties-common apt-utils xvfb wget tar gpg-agent && \
-    # Cleaning up.
-    apt-get autoremove -y --purge && \
-    apt-get clean -y && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-RUN \
-    # Install winehq-stable    
-    wget -O - https://dl.winehq.org/wine-builds/winehq.key | apt-key add - && \
-    add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ kinetic main' && \
-    apt-get update && apt-get install -yq --no-install-recommends winehq-stable && \
-    apt-get install -yq --no-install-recommends winbind winetricks cabextract && \
-    wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks && \
-	chmod +x winetricks && mv winetricks /usr/local/bin && \
-    # Cleaning up.
-    apt-get autoremove -y --purge && \
-    apt-get clean -y && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN ["apk", "--no-cache", "--allow-untrusted", "-v", "add", "wine", "xvfb", "xvfb-run"]
+RUN wget http://winetricks.org/winetricks && chmod +x winetricks && mv winetricks /usr/bin/winetricks
 
 USER wine
 # Init wine instance

@@ -13,6 +13,8 @@ env GOOS=linux GOARCH=amd64 go build
 cd -
 
 # Build the container
-docker build --tag 'docker-iqfeed' .
+docker build --tag 'mpdroog/docker-iqfeed:latest' -f Dockerfile .
 # Run it
-docker run -p 9100:9101 -p 8080:8080 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env docker-iqfeed
+docker run -p 9100:9101 -p 8080:8080 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env mpdroog/docker-iqfeed
+# Deploy it
+# docker push mpdroog/docker-iqfeed:latest
