@@ -216,12 +216,16 @@ func tcpProxy(conn tcpserver.Connection) {
 			stop := time.Now().Add(deadlineStream)
 			if e := upConn.SetDeadline(stop); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
-				conn.Write([]byte("E,CONN_SET_DEADLINE\r\n"))
+				if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
+					fmt.Printf("handleConn: %s\n", e.Error())
+				}
 				return
 			}
 			if e := conn.SetDeadline(stop); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
-				conn.Write([]byte("E,CONN_SET_DEADLINE\r\n"))
+				if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
+					fmt.Printf("handleConn: %s\n", e.Error())
+				}
 				return
 			}
 
@@ -257,11 +261,12 @@ func tcpProxy(conn tcpserver.Connection) {
 					if Verbose {
 						fmt.Printf("End-Of-Stream\n")
 					}
-					return
+					break
 				}
 			}
 			if i == loopLimit {
 				fmt.Printf("CRIT: loopLimit(%d) reached, something wrong in code?\n", loopLimit)
+				return
 			}
 		} else {
 			// One reply
