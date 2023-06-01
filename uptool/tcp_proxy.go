@@ -65,6 +65,12 @@ func tcpProxy(conn tcpserver.Connection) {
 		conn.Write([]byte("E,PARSE_DURATION\r\n"))
 		return
 	}
+	durStream, e := time.ParseDuration("20s")
+	if e != nil {
+		fmt.Printf("handleConn: %s\n", e.Error())
+		conn.Write([]byte("E,PARSE_DURATION\r\n"))
+		return
+	}
 	deadline := time.Now().Add(dur)
 
 	if e := conn.SetDeadline(deadline); e != nil {
@@ -176,6 +182,18 @@ func tcpProxy(conn tcpserver.Connection) {
 
 		// 2. stream?
 		if _, isStream := streamReplies[string(cmd)]; isStream {
+			// give streaming some extra time
+			if e := upConn.SetDeadline(time.Now().Add(durStream)); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+				conn.Write([]byte("E,CONN_SET_DEADLINE\r\n"))
+				return
+			}
+			if e := conn.SetDeadline(time.Now().Add(durStream)); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+				conn.Write([]byte("E,CONN_SET_DEADLINE\r\n"))
+				return
+			}
+
 			for {
 				if Verbose {
 					fmt.Printf("Stream.next\n")
