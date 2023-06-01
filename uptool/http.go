@@ -166,7 +166,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 				fmt.Printf("stream<< %s\n", bin)
 			}
 			if e != nil {
-				fmt.Errorf("upConn.Read e=%s\n", e.Error())
+				fmt.Printf("upConn.Read e=%s\n", e.Error())
 				w.WriteHeader(500)
 				writer.Err(w, r, writer.ErrorRes{Error: "Failed reading upstream"})
 				return
@@ -194,7 +194,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if e := writer.Encode(w, r, out); e != nil {
-			fmt.Errorf("buf.Flush e=%s\n", e.Error())
+			fmt.Printf("buf.Flush e=%s\n", e.Error())
 		}
 	}
 }

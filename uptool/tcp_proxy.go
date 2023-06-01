@@ -12,11 +12,17 @@ import (
 /** defaultConnectTimeout is the default upstream.Connect timeout */
 const defaultConnectTimeout = 3 * time.Second
 
+/** loopLimit is the max for the iteration */
+const loopLimit = 10000
+
 /** EOM is End Of Message stream */
 const EOM = "!ENDMSG!,"
 
 /** streamReplies are all cmds we expect more than 1 result (till EOM) */
 var streamReplies map[string]struct{}
+
+var deadlineCmd time.Duration
+var deadlineStream time.Duration
 
 /** init prepares tcp_proxy vars */
 func init() {
@@ -32,6 +38,16 @@ func init() {
 		"HIT": struct{}{},
 		"HDT": struct{}{},
 	}
+
+	var e error
+	deadlineCmd, e = time.ParseDuration("5s")
+	if e != nil {
+		panic(e)
+	}
+	deadlineStream, e = time.ParseDuration("15s")
+	if e != nil {
+		panic(e)
+	}
 }
 
 /** tcpProxy is small conn.Accept handler that prepares upstream and
@@ -39,7 +55,7 @@ func init() {
 func tcpProxy(conn tcpserver.Connection) {
 	defer func() {
 		if e := conn.Close(); e != nil {
-			fmt.Errorf("handleConn.Close: %s\n", e.Error())
+			fmt.Printf("handleConn.Close: %s\n", e.Error())
 		}
 		if Verbose {
 			fmt.Printf("handleConn: dropped conn\n")
@@ -50,39 +66,35 @@ func tcpProxy(conn tcpserver.Connection) {
 	}
 
 	if _, ok := Running.Load("iqfeed"); !ok {
-		conn.Write([]byte("E,NO_DAEMON\r\n"))
+		if _, e := conn.Write([]byte("E,NO_DAEMON\r\n")); e != nil {
+			fmt.Printf("handleConn: %s\n", e.Error())
+		}
 		return
 	}
 	if _, ok := Running.Load("admin"); !ok {
-		conn.Write([]byte("E,NO_ADMIN\r\n"))
+		if _, e := conn.Write([]byte("E,NO_ADMIN\r\n")); e != nil {
+			fmt.Printf("handleConn: %s\n", e.Error())
+		}
 		return
 	}
 
 	// Start the clock
-	dur, e := time.ParseDuration("5s")
-	if e != nil {
-		fmt.Printf("handleConn: %s\n", e.Error())
-		conn.Write([]byte("E,PARSE_DURATION\r\n"))
-		return
-	}
-	durStream, e := time.ParseDuration("20s")
-	if e != nil {
-		fmt.Printf("handleConn: %s\n", e.Error())
-		conn.Write([]byte("E,PARSE_DURATION\r\n"))
-		return
-	}
-	deadline := time.Now().Add(dur)
+	deadline := time.Now().Add(deadlineCmd)
 
 	if e := conn.SetDeadline(deadline); e != nil {
 		fmt.Printf("handleConn: %s\n", e.Error())
-		conn.Write([]byte("E,CONN_SET_DEADLINE\r\n"))
+		if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
+			fmt.Printf("handleConn: %s\n", e.Error())
+		}
 		return
 	}
 
 	upConn, e := net.DialTimeout("tcp", "127.0.0.1:9100", defaultConnectTimeout)
 	if e != nil {
 		fmt.Printf("handleConn: %s\n", e.Error())
-		conn.Write([]byte("E,UPSTREAM CONN_TIMEOUT\r\n"))
+		if _, e := conn.Write([]byte("E,UPSTREAM CONN_TIMEOUT\r\n")); e != nil {
+			fmt.Printf("handleConn: %s\n", e.Error())
+		}
 		return
 	}
 	defer upConn.Close()
@@ -91,25 +103,33 @@ func tcpProxy(conn tcpserver.Connection) {
 	{
 		if _, e := upConn.Write([]byte("TEST\r\n")); e != nil {
 			fmt.Printf("handleConn: %s\n", e.Error())
-			conn.Write([]byte("E,UPSTREAM_T\r\n"))
+			if _, e := conn.Write([]byte("E,UPSTREAM_T\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
 			return
 		}
 		b := make([]byte, len("E,!SYNTAX_ERROR!,\r\n"))
 		if _, e := upConn.Read(b); e != nil {
 			fmt.Printf("handleConn: %s\n", e.Error())
-			conn.Write([]byte("E,UPSTREAM_T_RES\r\n"))
+			if _, e := conn.Write([]byte("E,UPSTREAM_T_RES\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
 			return
 		}
 		if !bytes.Equal(b, []byte("E,!SYNTAX_ERROR!,\r\n")) {
 			fmt.Printf("handleConn: invalid res=%s\n", b)
-			conn.Write([]byte("E,UPSTREAM_T_INV\r\n"))
+			if _, e := conn.Write([]byte("E,UPSTREAM_T_INV\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
 			return
 		}
 	}
 
 	if e := upConn.SetDeadline(deadline); e != nil {
 		fmt.Printf("handleConn: %s\n", e.Error())
-		conn.Write([]byte("E,UPSTREAM SET_DEADLINE\r\n"))
+		if _, e := conn.Write([]byte("E,UPSTREAM SET_DEADLINE\r\n")); e != nil {
+			fmt.Printf("handleConn: %s\n", e.Error())
+		}
 		return
 	}
 
@@ -130,26 +150,32 @@ func tcpProxy(conn tcpserver.Connection) {
 
 		// 0. timeouts
 		// increase timeout upon receiving data
-		deadline := time.Now().Add(dur)
+		deadline = time.Now().Add(deadlineCmd)
 
 		if e := conn.SetDeadline(deadline); e != nil {
-			fmt.Errorf("conn.SetDeadline e=%s\n", e.Error())
-			conn.Write([]byte("E,CONN_SET_DEADLINE\r\n"))
-			break
+			fmt.Printf("conn.SetDeadline e=%s\n", e.Error())
+			if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
+			return
 		}
 		if e := upConn.SetDeadline(deadline); e != nil {
-			fmt.Errorf("upConn.SetDeadline e=%s\n", e.Error())
-			conn.Write([]byte("E,UPSTREAM SET_DEADLINE\r\n"))
-			break
+			fmt.Printf("upConn.SetDeadline e=%s\n", e.Error())
+			if _, e := conn.Write([]byte("E,UPSTREAM SET_DEADLINE\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
+			return
 		}
 
 		// 1. client cmd
 		bin, e := r.ReadBytes(byte('\n'))
 		bin = bytes.TrimSpace(bin)
 		if e != nil {
-			fmt.Errorf("conn.ReadBytes e=%s\n", e.Error())
-			conn.Write([]byte("E,CONN_READ_CMD\r\n"))
-			break
+			fmt.Printf("conn.ReadBytes e=%s\n", e.Error())
+			if _, e := conn.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
+			return
 		}
 
 		sep := bytes.Index(bin, []byte(","))
@@ -164,37 +190,43 @@ func tcpProxy(conn tcpserver.Connection) {
 
 		if bytes.Equal(cmd, []byte("QUIT")) {
 			if Verbose {
-				fmt.Errorf("QUIT-cmd\n")
+				fmt.Printf("QUIT-cmd\n")
 			}
-			break
+			return
 		}
 
 		if _, e := upConn.Write(bin); e != nil {
-			fmt.Errorf("upConn.Write e=%s\n", e.Error())
-			conn.Write([]byte("E,UPSTREAM_W\r\n"))
-			break
+			fmt.Printf("upConn.Write e=%s\n", e.Error())
+			if _, e := conn.Write([]byte("E,UPSTREAM_W\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
+			return
 		}
 		if _, e := upConn.Write([]byte("\r\n")); e != nil {
-			fmt.Errorf("upConn.Write e=%s\n", e.Error())
-			conn.Write([]byte("E,UPSTREAM_W\r\n"))
-			break
+			fmt.Printf("upConn.Write e=%s\n", e.Error())
+			if _, e := conn.Write([]byte("E,UPSTREAM_W\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
+			return
 		}
 
 		// 2. stream?
 		if _, isStream := streamReplies[string(cmd)]; isStream {
 			// give streaming some extra time
-			if e := upConn.SetDeadline(time.Now().Add(durStream)); e != nil {
+			stop := time.Now().Add(deadlineStream)
+			if e := upConn.SetDeadline(stop); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
 				conn.Write([]byte("E,CONN_SET_DEADLINE\r\n"))
 				return
 			}
-			if e := conn.SetDeadline(time.Now().Add(durStream)); e != nil {
+			if e := conn.SetDeadline(stop); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
 				conn.Write([]byte("E,CONN_SET_DEADLINE\r\n"))
 				return
 			}
 
-			for {
+			i := 0
+			for ; i < loopLimit+1; i++ {
 				if Verbose {
 					fmt.Printf("Stream.next\n")
 				}
@@ -206,25 +238,30 @@ func tcpProxy(conn tcpserver.Connection) {
 					fmt.Printf("stream<< %s\n", bin)
 				}
 				if e != nil {
-					fmt.Errorf("upConn.Read e=%s\n", e.Error())
-					conn.Write([]byte("UPSTREAM_R\r\n"))
-					break
+					fmt.Printf("upConn.Read e=%s\n", e.Error())
+					if _, e := conn.Write([]byte("UPSTREAM_R\r\n")); e != nil {
+						fmt.Printf("handleConn: %s\n", e.Error())
+					}
+					return
 				}
 				if _, e := conn.Write(bin); e != nil {
-					fmt.Errorf("conn.Write e=%s\n", e.Error())
-					break
+					fmt.Printf("conn.Write e=%s\n", e.Error())
+					return
 				}
 				if _, e := conn.Write([]byte("\r\n")); e != nil {
-					fmt.Errorf("conn.Write e=%s\n", e.Error())
-					break
+					fmt.Printf("conn.Write e=%s\n", e.Error())
+					return
 				}
 				if bytes.Equal(bin, []byte(EOM)) {
 					// Done!
 					if Verbose {
 						fmt.Printf("End-Of-Stream\n")
 					}
-					break
+					return
 				}
+			}
+			if i == loopLimit {
+				fmt.Printf("CRIT: loopLimit(%d) reached, something wrong in code?\n", loopLimit)
 			}
 		} else {
 			// One reply
@@ -235,17 +272,19 @@ func tcpProxy(conn tcpserver.Connection) {
 			}
 
 			if e != nil {
-				fmt.Errorf("upConn.Read e=%s\n", e.Error())
-				conn.Write([]byte("UPSTREAM_R\r\n"))
-				break
+				fmt.Printf("upConn.Read e=%s\n", e.Error())
+				if _, e := conn.Write([]byte("UPSTREAM_R\r\n")); e != nil {
+					fmt.Printf("handleConn: %s\n", e.Error())
+				}
+				return
 			}
 			if _, e := conn.Write(bin); e != nil {
-				fmt.Errorf("conn.Write e=%s\n", e.Error())
-				break
+				fmt.Printf("conn.Write e=%s\n", e.Error())
+				return
 			}
 			if _, e := conn.Write([]byte("\r\n")); e != nil {
-				fmt.Errorf("conn.Write e=%s\n", e.Error())
-				break
+				fmt.Printf("conn.Write e=%s\n", e.Error())
+				return
 			}
 		}
 	}
