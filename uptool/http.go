@@ -172,6 +172,16 @@ func data(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			if bytes.HasPrefix(bin, []byte("E,")) {
+				// Error
+				// E,!NO_DATA!,,", "E,Unauthorized user ID.,
+				buf := bytes.SplitN(bin, []byte(","), 4)
+
+				w.WriteHeader(400)
+				writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: buf})
+				return
+			}
+
 			if bytes.Equal(bin, []byte(EOM)) {
 				// Done!
 				if Verbose {
