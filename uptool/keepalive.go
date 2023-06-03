@@ -52,10 +52,12 @@ func keepalive(upAddr string) {
 		}
 
 		if _, e := upConn.Write([]byte("S,SET PROTOCOL,6.2\r\n")); e != nil {
+			upConn.Close()
 			fmt.Printf("[upConn write] %s\n", e.Error())
 			continue
 		}
 		if _, e := upConn.Write([]byte("S,SET CLIENT NAME,KEEPALIVE\r\n")); e != nil {
+			upConn.Close()
 			fmt.Printf("[upConn write] %s\n", e.Error())
 			continue
 		}
@@ -64,14 +66,12 @@ func keepalive(upAddr string) {
 		for {
 			deadline := time.Now().Add(dur)
 			if e := upConn.SetDeadline(deadline); e != nil {
-				upConn.Close()
 				fmt.Printf("[keepalive setDeadline]: %s\n", e.Error())
-				continue
+				break
 			}
 
 			// Request timestamp
 			if _, e := upConn.Write([]byte("T\r\n")); e != nil {
-				upConn.Close()
 				fmt.Printf("[keepalive Write]: %s\n", e.Error())
 				break
 			}
@@ -83,7 +83,6 @@ func keepalive(upAddr string) {
 				fmt.Printf("line=%s\n", bin)
 			}
 			if e != nil {
-				upConn.Close()
 				fmt.Printf("[keepalive ReadBytes]: %s\n", e.Error())
 				break
 			}
