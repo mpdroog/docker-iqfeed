@@ -61,6 +61,6 @@ type ErrorRes struct {
 }
 
 // Err return a error based on the ErroRes struct format
-func Err(w http.ResponseWriter, r *http.Request, m ErrorRes) {
-	Encode(w, r, &m)
+func Err(w http.ResponseWriter, r *http.Request, m ErrorRes) error {
+	return Encode(w, r, &m)
 }

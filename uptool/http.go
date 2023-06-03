@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"github.com/itshosted/webutils/muxdoc"
@@ -24,6 +23,14 @@ type OHLC struct {
 	Low      string
 	Open     string
 	Close    string
+	Volume   string
+}
+
+type SearchLine struct {
+	Ticker      string
+	MarketId    string
+	Description string
+	Type        string
 }
 
 // Return API Documentation (paths)
@@ -52,32 +59,130 @@ func verbose(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func search(w http.ResponseWriter, r *http.Request) {
+	// Construct cmd
+	var cmd string
+	{
+		// SBF,[Field To Search],[Search String],[Filter Type],[Filter Value],[RequestID]<CR><LF>
+		// sprintf("SBF,%s,%s,%s,%s", $field, $search, "t", implode(" ", array_keys($securityTypes)));
+		keys := []string{
+			"field",
+			"search",
+			"type",
+		}
+
+		args := make(map[string]string)
+		for _, key := range keys {
+			val := r.URL.Query().Get(key)
+			if val == "" {
+				w.WriteHeader(400)
+				if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[" + key + "] missing"}); e != nil {
+					fmt.Printf("HTTP[search] e=%s\n", e.Error())
+				}
+				return
+			}
+
+			if key == "field" {
+				if val == "SYMBOL" {
+					val = "s"
+				} else if val == "DESCRIPTION" {
+					val = "d"
+				} else {
+					w.WriteHeader(400)
+					if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[" + key + "] invalid, can only search on SYMBOL|DESCRIPTION"}); e != nil {
+						fmt.Printf("HTTP[search] e=%s\n", e.Error())
+					}
+					return
+				}
+			}
+
+			if key == "type" {
+				if val == "EQUITY" {
+					val = "1"
+				} else {
+					w.WriteHeader(400)
+					if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[" + key + "] invalid, can only have EQUITY"}); e != nil {
+						fmt.Printf("HTTP[search] e=%s\n", e.Error())
+					}
+					return
+				}
+			}
+
+			args[key] = val
+		}
+
+		cmd = fmt.Sprintf("SBF,%s,%s,%s,%s", args["field"], args["search"], "t", args["type"])
+	}
+
+	// Parse lines
+	var out []SearchLine
+	if e := proxy(cmd, func(bin []byte) error {
+		buf := bytes.SplitN(bin, []byte(","), 9)
+		if len(buf) < 6 {
+			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
+		}
+
+		// LS,TSLA,21,1,TESLA  INC.,
+		out = append(out, SearchLine{
+			Ticker:      string(buf[1]),
+			MarketId:    string(buf[2]),
+			Description: string(buf[4]),
+			Type:        string(buf[3]),
+		})
+		return nil
+
+	}); e != nil {
+		fmt.Printf("HTTP[search] e=%s\n", e.Error())
+		w.WriteHeader(400)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+			fmt.Printf("HTTP[search] e=%s\n", e.Error())
+		}
+		return
+	}
+
+	if e := writer.Encode(w, r, out); e != nil {
+		fmt.Printf("buf.Flush e=%s\n", e.Error())
+	}
+}
+
 func data(w http.ResponseWriter, r *http.Request) {
 	// Collect args to construct cmd
-	var cmd string
+	var (
+		cmd string
+		dp  int
+	)
 	{
 		asset := r.URL.Query().Get("asset")
 		if asset == "" {
 			w.WriteHeader(400)
-			writer.Err(w, r, writer.ErrorRes{Error: "GET[asset] missing"})
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[asset] missing"}); e != nil {
+				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			}
 			return
 		}
 		rangeStr := r.URL.Query().Get("range")
 		if rangeStr == "" {
 			w.WriteHeader(400)
-			writer.Err(w, r, writer.ErrorRes{Error: "GET[range] missing"})
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[range] missing"}); e != nil {
+				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			}
 			return
 		}
 		dpStr := r.URL.Query().Get("datapoints")
 		if dpStr == "" {
 			w.WriteHeader(400)
-			writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] missing"})
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] missing"}); e != nil {
+				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			}
 			return
 		}
-		dp, e := strconv.Atoi(dpStr)
+		var e error
+		dp, e = strconv.Atoi(dpStr)
 		if e != nil {
 			w.WriteHeader(400)
-			writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] not a number"})
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] not a number"}); e != nil {
+				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			}
 			return
 		}
 
@@ -89,123 +194,43 @@ func data(w http.ResponseWriter, r *http.Request) {
 			cmd = fmt.Sprintf("HMX,%s,%d", asset, dp)
 		} else {
 			w.WriteHeader(400)
-			writer.Err(w, r, writer.ErrorRes{Error: "GET[range] not valid, possible=DAILY|WEEKLY|MONTHLY"})
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[range] not valid, possible=DAILY|WEEKLY|MONTHLY"}); e != nil {
+				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			}
 			return
 		}
 	}
 
-	// Collect data
-	{
-		// Start the clock
-		dur, e := time.ParseDuration("10s")
-		if e != nil {
-			fmt.Printf("data: %s\n", e.Error())
-			w.WriteHeader(500)
-			writer.Err(w, r, writer.ErrorRes{Error: "Failed parsing duration"})
-			return
-		}
-		upConn, e := net.DialTimeout("tcp", "127.0.0.1:9100", defaultConnectTimeout)
-		if e != nil {
-			fmt.Printf("data: %s\n", e.Error())
-			w.WriteHeader(500)
-			writer.Err(w, r, writer.ErrorRes{Error: "Failed connecting to TCP 9100"})
-			return
-		}
-		defer upConn.Close()
-
-		deadline := time.Now().Add(dur)
-		if e := upConn.SetDeadline(deadline); e != nil {
-			fmt.Printf("data: %s\n", e.Error())
-			w.WriteHeader(500)
-			writer.Err(w, r, writer.ErrorRes{Error: "Failed configuring deadline"})
-			return
+	// Parse lines
+	out := make([]OHLC, dp)
+	if e := proxy(cmd, func(bin []byte) error {
+		buf := bytes.SplitN(bin, []byte(","), 9)
+		if len(buf) < 7 {
+			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
 		}
 
-		if _, e := upConn.Write([]byte("S,SET PROTOCOL,6.2\r\n")); e != nil {
-			fmt.Printf("[upConn write] %s\n", e.Error())
-			w.WriteHeader(500)
-			writer.Err(w, r, writer.ErrorRes{Error: "Failed sending protocol-cmd"})
-			return
+		// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
+		out = append(out, OHLC{
+			Datetime: string(buf[1]),
+			High:     string(buf[2]),
+			Low:      string(buf[3]),
+			Open:     string(buf[4]),
+			Close:    string(buf[5]),
+			Volume:   string(buf[6]),
+		})
+		return nil
+
+	}); e != nil {
+		fmt.Printf("HTTP[data] e=%s\n", e.Error())
+		w.WriteHeader(400)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+			fmt.Printf("HTTP[data] e=%s\n", e.Error())
 		}
+		return
+	}
 
-		rUp := bufio.NewReader(upConn)
-		// S,CURRENT PROTOCOL,6.2
-		{
-			bin, e := rUp.ReadBytes(byte('\n'))
-			bin = bytes.TrimSpace(bin)
-			if Verbose {
-				fmt.Printf("stream<< %s\n", bin)
-			}
-			if e != nil {
-				fmt.Printf("[upConn Read] %s\n", e.Error())
-				w.WriteHeader(500)
-				writer.Err(w, r, writer.ErrorRes{Error: "Failed reading protocol-cmd"})
-				return
-			}
-		}
-
-		if _, e := upConn.Write([]byte(cmd)); e != nil {
-			fmt.Printf("data: %s\n", e.Error())
-			w.WriteHeader(500)
-			writer.Err(w, r, writer.ErrorRes{Error: "Failed sending ohlc-cmd"})
-			return
-		}
-		if _, e := upConn.Write([]byte("\r\n")); e != nil {
-			fmt.Printf("data: %s\n", e.Error())
-			w.WriteHeader(500)
-			writer.Err(w, r, writer.ErrorRes{Error: "Failed sending ohlc-EOL"})
-			return
-		}
-
-		var out []OHLC
-		for {
-			// read until EOM
-			bin, e := rUp.ReadBytes(byte('\n'))
-			bin = bytes.TrimSpace(bin)
-			if Verbose {
-				fmt.Printf("stream<< %s\n", bin)
-			}
-			if e != nil {
-				fmt.Printf("upConn.Read e=%s\n", e.Error())
-				w.WriteHeader(500)
-				writer.Err(w, r, writer.ErrorRes{Error: "Failed reading upstream"})
-				return
-			}
-
-			if bytes.HasPrefix(bin, []byte("E,")) {
-				// Error
-				// E,!NO_DATA!,,", "E,Unauthorized user ID.,
-				buf := bytes.SplitN(bin, []byte(","), 4)
-
-				w.WriteHeader(400)
-				writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: buf})
-				return
-			}
-
-			if bytes.Equal(bin, []byte(EOM)) {
-				// Done!
-				if Verbose {
-					fmt.Printf("End-Of-Stream\n")
-				}
-				break
-			}
-
-			// Parse line
-			buf := bytes.SplitN(bin, []byte(","), 9)
-
-			// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
-			out = append(out, OHLC{
-				Datetime: string(buf[1]),
-				High:     string(buf[2]),
-				Low:      string(buf[3]),
-				Open:     string(buf[4]),
-				Close:    string(buf[5]),
-			})
-		}
-
-		if e := writer.Encode(w, r, out); e != nil {
-			fmt.Printf("buf.Flush e=%s\n", e.Error())
-		}
+	if e := writer.Encode(w, r, out); e != nil {
+		fmt.Printf("buf.Flush e=%s\n", e.Error())
 	}
 }
 
@@ -217,6 +242,7 @@ func httpListen(addr string) {
 	mux.Add("/verbose", verbose, "Toggle verbosity-mode")
 
 	mux.Add("/ohlc", data, "Read OHLC ?asset=AAPL&range=DAILY|WEEKLY|MONTHLY&datapoints=10")
+	mux.Add("/search", search, "Search assets ?field=SYMBOL|DESCRIPTION&search=*&type=EQUITY")
 
 	var e error
 	server := &http.Server{
