@@ -202,7 +202,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse lines
-	out := make([]OHLC, dp)
+	out := make([]OHLC, 0, dp)
 	if e := proxy(cmd, func(bin []byte) error {
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 7 {
