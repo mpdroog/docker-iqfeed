@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/maurice2k/tcpserver"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -37,6 +38,7 @@ func init() {
 		"HID": struct{}{},
 		"HIT": struct{}{},
 		"HDT": struct{}{},
+		"SBF": struct{}{},
 	}
 
 	var e error
@@ -117,8 +119,26 @@ func proxy(cmd string, cb LineFunc) error {
 		return e
 	}
 
-	i := 0
-	for ; i < loopLimit+1; i++ {
+	// TODO: Refactor search into streaming JSON..?
+
+	lineLimit := loopLimit
+	// Allow search to get more lines
+	if strings.HasPrefix(cmd, "SBF,") {
+		lineLimit = -1 // No limit for search
+	}
+	for i := 0; ; i++ {
+		if lineLimit != -1 && i >= lineLimit {
+			// Stop
+			return fmt.Errorf("CRIT: loopLimit(%d) reached, something wrong in code?\n", lineLimit)
+		}
+
+		// give streaming some extra time
+		stop := time.Now().Add(deadlineStream)
+		if e := upConn.SetDeadline(stop); e != nil {
+			fmt.Printf("handleConn: %s\n", e.Error())
+			return fmt.Errorf("E,CONN_SET_DEADLINE")
+		}
+
 		// read until EOM
 		bin, e := rUp.ReadBytes(byte('\n'))
 		bin = bytes.TrimSpace(bin)
@@ -148,10 +168,6 @@ func proxy(cmd string, cb LineFunc) error {
 			return e
 		}
 	}
-	if i == loopLimit {
-		return fmt.Errorf("CRIT: loopLimit(%d) reached, something wrong in code?\n", loopLimit)
-	}
-
 	return nil
 }
 
@@ -317,27 +333,36 @@ func tcpProxy(conn tcpserver.Connection) {
 
 		// 2. stream?
 		if _, isStream := streamReplies[string(cmd)]; isStream {
-			// give streaming some extra time
-			stop := time.Now().Add(deadlineStream)
-			if e := upConn.SetDeadline(stop); e != nil {
-				fmt.Printf("handleConn: %s\n", e.Error())
-				if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
-					fmt.Printf("handleConn: %s\n", e.Error())
-				}
-				return
+			lineLimit := loopLimit
+			// Allow search to get more lines
+			if bytes.Equal(cmd, []byte("SBF")) {
+				lineLimit = -1 // No limit for search
 			}
-			if e := conn.SetDeadline(stop); e != nil {
-				fmt.Printf("handleConn: %s\n", e.Error())
-				if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
-					fmt.Printf("handleConn: %s\n", e.Error())
+			for i := 0; ; i++ {
+				if lineLimit != -1 && i >= lineLimit {
+					// Stop
+					fmt.Printf("CRIT: loopLimit(%d) reached, something wrong in code?\n", lineLimit)
+					break
 				}
-				return
-			}
-
-			i := 0
-			for ; i < loopLimit+1; i++ {
 				if Verbose {
 					fmt.Printf("Stream.next\n")
+				}
+
+				// give streaming some extra time
+				stop := time.Now().Add(deadlineStream)
+				if e := upConn.SetDeadline(stop); e != nil {
+					fmt.Printf("handleConn: %s\n", e.Error())
+					if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
+						fmt.Printf("handleConn: %s\n", e.Error())
+					}
+					return
+				}
+				if e := conn.SetDeadline(stop); e != nil {
+					fmt.Printf("handleConn: %s\n", e.Error())
+					if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
+						fmt.Printf("handleConn: %s\n", e.Error())
+					}
+					return
 				}
 
 				// read until EOM
@@ -368,10 +393,6 @@ func tcpProxy(conn tcpserver.Connection) {
 					}
 					break
 				}
-			}
-			if i == loopLimit {
-				fmt.Printf("CRIT: loopLimit(%d) reached, something wrong in code?\n", loopLimit)
-				return
 			}
 		} else {
 			// One reply
