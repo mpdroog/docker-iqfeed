@@ -61,7 +61,7 @@ func verbose(w http.ResponseWriter, r *http.Request) {
 
 func search(w http.ResponseWriter, r *http.Request) {
 	// Construct cmd
-	var cmd string
+	var cmd []byte
 	{
 		// SBF,[Field To Search],[Search String],[Filter Type],[Filter Value],[RequestID]<CR><LF>
 		// sprintf("SBF,%s,%s,%s,%s", $field, $search, "t", implode(" ", array_keys($securityTypes)));
@@ -111,7 +111,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 			args[key] = val
 		}
 
-		cmd = fmt.Sprintf("SBF,%s,%s,%s,%s", args["field"], args["search"], "t", args["type"])
+		cmd = []byte(fmt.Sprintf("SBF,%s,%s,%s,%s", args["field"], args["search"], "t", args["type"]))
 	}
 
 	// Parse lines
@@ -148,7 +148,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 func data(w http.ResponseWriter, r *http.Request) {
 	// Collect args to construct cmd
 	var (
-		cmd string
+		cmd []byte
 		dp  int
 	)
 	{
@@ -187,11 +187,11 @@ func data(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if rangeStr == "DAILY" {
-			cmd = fmt.Sprintf("HDX,%s,%d", asset, dp)
+			cmd = []byte(fmt.Sprintf("HDX,%s,%d", asset, dp))
 		} else if rangeStr == "WEEKLY" {
-			cmd = fmt.Sprintf("HWX,%s,%d", asset, dp)
+			cmd = []byte(fmt.Sprintf("HWX,%s,%d", asset, dp))
 		} else if rangeStr == "MONTHLY" {
-			cmd = fmt.Sprintf("HMX,%s,%d", asset, dp)
+			cmd = []byte(fmt.Sprintf("HMX,%s,%d", asset, dp))
 		} else {
 			w.WriteHeader(400)
 			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[range] not valid, possible=DAILY|WEEKLY|MONTHLY"}); e != nil {
