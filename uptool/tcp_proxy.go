@@ -204,11 +204,11 @@ func tcpProxy(conn tcpserver.Connection) {
 		bin, e := r.ReadBytes(byte('\n'))
 		bin = bytes.TrimSpace(bin)
 		if e != nil {
-		       fmt.Printf("conn.ReadBytes e=%s\n", e.Error())
-		       if _, e := conn.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
-		            fmt.Printf("handleConn: %s\n", e.Error())
-		       }
-		       return
+			fmt.Printf("conn.ReadBytes e=%s\n", e.Error())
+			if _, e := conn.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
+			return
 		}
 
 		if e := proxy(bin, func(line []byte) error {
@@ -224,7 +224,7 @@ func tcpProxy(conn tcpserver.Connection) {
 				return fmt.Errorf("conn.Write e=%s\n", e.Error())
 			}
 			return nil
-	
+
 		}); e != nil {
 			fmt.Printf("handleConn: %s\n", e.Error())
 			return

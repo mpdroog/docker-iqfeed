@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/itshosted/webutils/muxdoc"
 	"github.com/mpdroog/docker-iqfeed/iqapi/writer"
@@ -148,8 +149,9 @@ func search(w http.ResponseWriter, r *http.Request) {
 func data(w http.ResponseWriter, r *http.Request) {
 	// Collect args to construct cmd
 	var (
-		cmd []byte
-		dp  int
+		cmd  []byte
+		dp   int
+		mode string
 	)
 	{
 		asset := r.URL.Query().Get("asset")
@@ -190,6 +192,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("HTTP[intervals] limit increased to %d\n", loopLimit)
 		}
 
+		mode = r.URL.Query().Get("mode")
 		if rangeStr == "DAILY" {
 			cmd = []byte(fmt.Sprintf("HDX,%s,%d", asset, dp))
 		} else if rangeStr == "WEEKLY" {
@@ -203,6 +206,53 @@ func data(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+	}
+
+	if mode == "chunked" {
+		w.Header().Set("Content-Type", "application/json")
+		ohlc := &OHLC{}
+		enc := json.NewEncoder(w)
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
+			return
+		}
+
+		if e := proxy(cmd, func(bin []byte) error {
+			buf := bytes.SplitN(bin, []byte(","), 9)
+			if len(buf) < 7 {
+				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
+			}
+
+			// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
+			ohlc.Datetime = string(buf[1])
+			ohlc.High = string(buf[2])
+			ohlc.Low = string(buf[3])
+			ohlc.Open = string(buf[4])
+			ohlc.Close = string(buf[5])
+			ohlc.Volume = string(buf[6])
+
+			if e := enc.Encode(ohlc); e != nil {
+				return e
+			}
+
+			// TODO: flush every X lines?
+			flusher.Flush()
+			return nil
+
+		}); e != nil {
+			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			}
+			return
+		}
+		return
 	}
 
 	// Parse lines
@@ -241,9 +291,10 @@ func data(w http.ResponseWriter, r *http.Request) {
 func intervals(w http.ResponseWriter, r *http.Request) {
 	// Collect args to construct cmd
 	var (
-		cmd []byte
+		cmd      []byte
 		interval int
-		dp  int
+		dp       int
+		mode     string
 	)
 	{
 		asset := r.URL.Query().Get("asset")
@@ -294,7 +345,55 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("HTTP[intervals] limit increased to %d\n", loopLimit)
 		}
 
+		mode = r.URL.Query().Get("mode")
 		cmd = []byte(fmt.Sprintf("HIX,%s,%d,%d", asset, interval, dp))
+	}
+
+	if mode == "chunked" {
+		w.Header().Set("Content-Type", "application/json")
+		ohlc := &OHLC{}
+		enc := json.NewEncoder(w)
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
+			return
+		}
+
+		if e := proxy(cmd, func(bin []byte) error {
+			buf := bytes.SplitN(bin, []byte(","), 9)
+			if len(buf) < 7 {
+				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
+			}
+
+			// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
+			ohlc.Datetime = string(buf[1])
+			ohlc.High = string(buf[2])
+			ohlc.Low = string(buf[3])
+			ohlc.Open = string(buf[4])
+			ohlc.Close = string(buf[5])
+			ohlc.Volume = string(buf[6])
+
+			if e := enc.Encode(ohlc); e != nil {
+				return e
+			}
+
+			// TODO: flush every X lines?
+			flusher.Flush()
+			return nil
+
+		}); e != nil {
+			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			}
+			return
+		}
+		return
 	}
 
 	// Parse lines
