@@ -12,9 +12,6 @@ import (
 /** defaultConnectTimeout is the default upstream.Connect timeout */
 const defaultConnectTimeout = 3 * time.Second
 
-/** loopLimit is the max for the iteration */
-var loopLimit = 10000
-
 /** EOM is End Of Message stream */
 const EOM = "!ENDMSG!,"
 
@@ -66,7 +63,7 @@ func isError(bin []byte) [][]byte {
 type LineFunc func(line []byte) error
 
 // proxy opens an upstream connection and calls cb on every line it reads
-func proxy(cmd []byte, cb LineFunc) error {
+func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 	if _, ok := Running.Load("iqfeed"); !ok {
 		return fmt.Errorf("iqfeed not running")
 	}
@@ -121,13 +118,6 @@ func proxy(cmd []byte, cb LineFunc) error {
 		return e
 	}
 
-	// TODO: Refactor search into streaming JSON..?
-
-	lineLimit := loopLimit
-	// Allow search to get more lines
-	if bytes.HasPrefix(cmd, []byte("SBF,")) {
-		lineLimit = -1 // No limit for search
-	}
 	for i := 0; ; i++ {
 		if lineLimit != -1 && i >= lineLimit {
 			// Stop
@@ -211,7 +201,7 @@ func tcpProxy(conn tcpserver.Connection) {
 			return
 		}
 
-		if e := proxy(bin, func(line []byte) error {
+		if e := proxy(bin, -1, func(line []byte) error {
 			stop := time.Now().Add(deadlineCmd)
 			if e := conn.SetDeadline(stop); e != nil {
 				return fmt.Errorf("conn.SetDeadline e=%s", e.Error())

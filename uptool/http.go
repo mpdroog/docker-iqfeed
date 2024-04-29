@@ -117,7 +117,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 
 	// Parse lines
 	var out []SearchLine
-	if e := proxy(cmd, func(bin []byte) error {
+	if e := proxy(cmd, -1, func(bin []byte) error {
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 6 {
 			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
@@ -187,10 +187,6 @@ func data(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		if loopLimit < dp {
-			loopLimit = dp + 500
-			fmt.Printf("HTTP[intervals] limit increased to %d\n", loopLimit)
-		}
 
 		mode = r.URL.Query().Get("mode")
 		if rangeStr == "DAILY" {
@@ -222,7 +218,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if e := proxy(cmd, func(bin []byte) error {
+		if e := proxy(cmd, -1, func(bin []byte) error {
 			buf := bytes.SplitN(bin, []byte(","), 9)
 			if len(buf) < 7 {
 				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
@@ -257,7 +253,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 
 	// Parse lines
 	out := make([]OHLC, 0, dp)
-	if e := proxy(cmd, func(bin []byte) error {
+	if e := proxy(cmd, dp+100, func(bin []byte) error {
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 7 {
 			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
@@ -340,10 +336,6 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		if loopLimit < dp {
-			loopLimit = dp + 500
-			fmt.Printf("HTTP[intervals] limit increased to %d\n", loopLimit)
-		}
 
 		mode = r.URL.Query().Get("mode")
 		cmd = []byte(fmt.Sprintf("HIX,%s,%d,%d", asset, interval, dp))
@@ -363,7 +355,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if e := proxy(cmd, func(bin []byte) error {
+		if e := proxy(cmd, -1, func(bin []byte) error {
 			buf := bytes.SplitN(bin, []byte(","), 9)
 			if len(buf) < 7 {
 				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
@@ -398,7 +390,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 
 	// Parse lines
 	out := make([]OHLC, 0, dp)
-	if e := proxy(cmd, func(bin []byte) error {
+	if e := proxy(cmd, dp+100, func(bin []byte) error {
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 7 {
 			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
