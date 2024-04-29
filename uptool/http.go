@@ -185,6 +185,10 @@ func data(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		if loopLimit < dp {
+			loopLimit = dp + 500
+			fmt.Printf("HTTP[intervals] limit increased to %d\n", loopLimit)
+		}
 
 		if rangeStr == "DAILY" {
 			cmd = []byte(fmt.Sprintf("HDX,%s,%d", asset, dp))
@@ -268,9 +272,6 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// TODO: Something fancy here to validate the interval?
-		if loopLimit < interval {
-			loopLimit = interval + 500
-		}
 
 		dpStr := r.URL.Query().Get("datapoints")
 		if dpStr == "" {
@@ -287,6 +288,10 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 			}
 			return
+		}
+		if loopLimit < dp {
+			loopLimit = dp + 500
+			fmt.Printf("HTTP[intervals] limit increased to %d\n", loopLimit)
 		}
 
 		cmd = []byte(fmt.Sprintf("HIX,%s,%d,%d", asset, interval, dp))
