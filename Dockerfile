@@ -27,7 +27,7 @@ RUN winecfg && wineserver --wait
 ADD cache/$IQFEED_INSTALLER_BIN /home/wine/$IQFEED_INSTALLER_BIN
 
 # Install iqfeed client
-RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && wineserver --wait && wine64 reg add HKEY_CURRENT_USER\\\Software\\\DTN\\\IQFeed\\\Startup /t REG_DWORD /v LogLevel /d $IQFEED_LOG_LEVEL /f && wineserver --wait && rm /home/wine/$IQFEED_INSTALLER_BIN
+RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && wineserver --wait && wine64 reg add HKEY_CURRENT_USER\\\Software\\\DTN\\\IQFeed\\\Startup /t REG_DWORD /v LogLevel /d $IQFEED_LOG_LEVEL /f && wine64 reg add HKEY_CURRENT_USER\\\Software\\\Wine\\\WineDbg /t REG_DWORD /v ShowCrashDialog /d 0 /f && wineserver --wait && rm /home/wine/$IQFEED_INSTALLER_BIN
 ADD uptool/iqapi /home/wine/iq-api
 
 # Correct X-perm warn
