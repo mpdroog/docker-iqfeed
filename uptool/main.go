@@ -36,6 +36,11 @@ func main() {
 		os.Exit(1)
 		return
 	}
+	vv := os.Getenv("VERBOSE")
+	if vv != "" {
+		fmt.Printf("env.VERBOSE toggled\n")
+		Verbose = true
+	}
 	// TODO: Crash if " symbol is found in env-vars?
 
 	// Config for all cmds
