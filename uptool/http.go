@@ -211,7 +211,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			w.WriteHeader(400)
 			if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+				fmt.Printf("HTTP[intervals] Flusher e=%s\n", e.Error())
 			}
 			return
 		}
@@ -243,12 +243,20 @@ func data(w http.ResponseWriter, r *http.Request) {
 			return nil
 
 		}); e != nil {
-			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			fmt.Printf("HTTP[data] proxy e=%s\n", e.Error())
 			w.WriteHeader(400)
 			if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
-				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+				fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
 			}
 			return
+		}
+
+		if i == 0 {
+			// Nothing sent to client
+			w.WriteHeader(404)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+				fmt.Printf("HTTP[data] noData e=%s\n", e.Error())
+			}
 		}
 
 		flusher.Flush()
@@ -257,6 +265,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 
 	// Parse lines
 	out := make([]OHLC, 0, dp)
+	i := 0
 	if e := proxy(cmd, dp+100, func(bin []byte) error {
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 7 {
@@ -264,6 +273,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
+		i++
 		out = append(out, OHLC{
 			Datetime: string(buf[1]),
 			High:     string(buf[2]),
@@ -275,16 +285,25 @@ func data(w http.ResponseWriter, r *http.Request) {
 		return nil
 
 	}); e != nil {
-		fmt.Printf("HTTP[data] e=%s\n", e.Error())
+		fmt.Printf("HTTP[data] proxy e=%s\n", e.Error())
 		w.WriteHeader(400)
 		if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
-			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
+		}
+		return
+	}
+
+	if i == 0 {
+		// Nothing sent to client
+		w.WriteHeader(404)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+			fmt.Printf("HTTP[data] err e=%s\n", e.Error())
 		}
 		return
 	}
 
 	if e := writer.Encode(w, r, out); e != nil {
-		fmt.Printf("buf.Flush e=%s\n", e.Error())
+		fmt.Printf("HTTP[data] flush e=%s\n", e.Error())
 	}
 }
 
@@ -385,9 +404,17 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			return nil
 
 		}); e != nil {
-			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 			// devnote: cannot print error as it might crash in-between
 			return
+		}
+
+		if i == 0 {
+			// Nothing sent to client
+			w.WriteHeader(404)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
 		}
 
 		flusher.Flush()
@@ -395,6 +422,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse lines
+	i := 0
 	out := make([]OHLC, 0, dp)
 	if e := proxy(cmd, dp+100, func(bin []byte) error {
 		buf := bytes.SplitN(bin, []byte(","), 9)
@@ -403,6 +431,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
+		i++
 		out = append(out, OHLC{
 			Datetime: string(buf[1]),
 			High:     string(buf[2]),
@@ -417,6 +446,15 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("HTTP[data] e=%s\n", e.Error())
 		w.WriteHeader(400)
 		if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+		}
+		return
+	}
+
+	if i == 0 {
+		// Nothing sent to client
+		w.WriteHeader(404)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
 			fmt.Printf("HTTP[data] e=%s\n", e.Error())
 		}
 		return
@@ -445,7 +483,7 @@ func httpListen(addr string) {
 		Handler:      mux.Mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  15 * time.Second,
+		IdleTimeout:  20 * time.Second,
 	}
 
 	ln, e = net.Listen("tcp", server.Addr)

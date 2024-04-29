@@ -74,6 +74,8 @@ func main() {
 
 	ensureRunning(&wg, cmds)
 
+	ConnKeepAliveInit()
+
 	// Admin monitoring
 	go admin()
 	// Client that keeps everything open

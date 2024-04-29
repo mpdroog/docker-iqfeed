@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/maurice2k/tcpserver"
-	"net"
 	"time"
 )
 
@@ -72,44 +71,12 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 	}
 
 	// TODO: Maybe re-use some pool?
-	upConn, e := net.DialTimeout("tcp", "127.0.0.1:9100", defaultConnectTimeout)
+	upConn, e := GetConn()
 	if e != nil {
 		return e
 	}
-	defer func() {
-		if e := upConn.Close(); e != nil {
-			fmt.Printf("WARN: proxy defer.Close e=%s\n", e.Error())
-		}
-	}()
-
-	deadline := time.Now().Add(deadlineStream)
-	if e := upConn.SetDeadline(deadline); e != nil {
-		return e
-	}
-
+	defer FreeConn(upConn)
 	rUp := bufio.NewReader(upConn)
-
-	// Prepare conn
-	{
-		if _, e := upConn.Write([]byte("S,SET PROTOCOL,6.2\r\n")); e != nil {
-			return e
-		}
-
-		// S,CURRENT PROTOCOL,6.2
-		{
-			bin, e := rUp.ReadBytes(byte('\n'))
-			bin = bytes.TrimSpace(bin)
-			if Verbose {
-				fmt.Printf("stream<< %s\n", bin)
-			}
-			if e != nil {
-				return e
-			}
-			if !bytes.Equal(bin, []byte("S,CURRENT PROTOCOL,6.2")) {
-				return fmt.Errorf("[upConn Equal] invalid res=%s\n", bin)
-			}
-		}
-	}
 
 	if _, e := upConn.Write(cmd); e != nil {
 		return e
