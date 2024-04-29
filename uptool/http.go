@@ -234,6 +234,93 @@ func data(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func intervals(w http.ResponseWriter, r *http.Request) {
+	// Collect args to construct cmd
+	var (
+		cmd []byte
+		interval int
+		dp  int
+	)
+	{
+		asset := r.URL.Query().Get("asset")
+		if asset == "" {
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[asset] missing"}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
+			return
+		}
+		intervalStr := r.URL.Query().Get("interval")
+		if intervalStr == "" {
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[interval] missing"}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
+			return
+		}
+		var e error
+		interval, e = strconv.Atoi(intervalStr)
+		if e != nil {
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[interval] not a number"}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
+			return
+		}
+
+		dpStr := r.URL.Query().Get("datapoints")
+		if dpStr == "" {
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] missing"}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
+			return
+		}
+		dp, e = strconv.Atoi(dpStr)
+		if e != nil {
+			w.WriteHeader(400)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] not a number"}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
+			return
+		}
+
+		cmd = []byte(fmt.Sprintf("HIX,%s,%d,%d", asset, interval, dp))
+	}
+
+	// Parse lines
+	out := make([]OHLC, 0, dp)
+	if e := proxy(cmd, func(bin []byte) error {
+		buf := bytes.SplitN(bin, []byte(","), 9)
+		if len(buf) < 7 {
+			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
+		}
+
+		// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
+		out = append(out, OHLC{
+			Datetime: string(buf[1]),
+			High:     string(buf[2]),
+			Low:      string(buf[3]),
+			Open:     string(buf[4]),
+			Close:    string(buf[5]),
+			Volume:   string(buf[6]),
+		})
+		return nil
+
+	}); e != nil {
+		fmt.Printf("HTTP[data] e=%s\n", e.Error())
+		w.WriteHeader(400)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+		}
+		return
+	}
+
+	if e := writer.Encode(w, r, out); e != nil {
+		fmt.Printf("buf.Flush e=%s\n", e.Error())
+	}
+}
+
 func httpListen(addr string) {
 	// HTTP server
 	mux.Title = "IQ API"
@@ -242,6 +329,7 @@ func httpListen(addr string) {
 	mux.Add("/verbose", verbose, "Toggle verbosity-mode")
 
 	mux.Add("/ohlc", data, "Read OHLC ?asset=AAPL&range=DAILY|WEEKLY|MONTHLY&datapoints=10")
+	mux.Add("/ohlc-intervals", intervals, "Read OHLC (interval in seconds) ?asset=AAPL&interval=100&datapoints=10")
 	mux.Add("/search", search, "Search assets ?field=SYMBOL|DESCRIPTION&search=*&type=EQUITY")
 
 	var e error
