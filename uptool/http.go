@@ -218,6 +218,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		i := 0
 		if e := proxy(cmd, -1, func(bin []byte) error {
 			buf := bytes.SplitN(bin, []byte(","), 9)
 			if len(buf) < 7 {
@@ -236,8 +237,10 @@ func data(w http.ResponseWriter, r *http.Request) {
 				return e
 			}
 
-			// TODO: flush every X lines?
-			flusher.Flush()
+			i++
+			if (i % 100 == 0) {
+				flusher.Flush()
+			}
 			return nil
 
 		}); e != nil {
@@ -248,6 +251,8 @@ func data(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+
+		flusher.Flush()
 		return
 	}
 
@@ -355,6 +360,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		i := 0
 		if e := proxy(cmd, -1, func(bin []byte) error {
 			buf := bytes.SplitN(bin, []byte(","), 9)
 			if len(buf) < 7 {
@@ -373,18 +379,19 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 				return e
 			}
 
-			// TODO: flush every X lines?
-			flusher.Flush()
+			i++
+			if (i % 100 == 0) {
+				flusher.Flush()
+			}
 			return nil
 
 		}); e != nil {
 			fmt.Printf("HTTP[data] e=%s\n", e.Error())
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
-				fmt.Printf("HTTP[data] e=%s\n", e.Error())
-			}
+			// devnote: cannot print error as it might crash in-between
 			return
 		}
+
+		flusher.Flush()
 		return
 	}
 
