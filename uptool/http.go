@@ -267,6 +267,10 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		// TODO: Something fancy here to validate the interval?
+		if loopLimit < interval {
+			loopLimit = interval + 500
+		}
 
 		dpStr := r.URL.Query().Get("datapoints")
 		if dpStr == "" {

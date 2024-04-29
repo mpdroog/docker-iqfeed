@@ -13,7 +13,7 @@ import (
 const defaultConnectTimeout = 3 * time.Second
 
 /** loopLimit is the max for the iteration */
-const loopLimit = 10000
+var loopLimit = 10000
 
 /** EOM is End Of Message stream */
 const EOM = "!ENDMSG!,"
