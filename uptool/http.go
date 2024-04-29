@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"github.com/itshosted/webutils/muxdoc"
 	"github.com/mpdroog/docker-iqfeed/iqapi/writer"
@@ -207,7 +206,6 @@ func data(w http.ResponseWriter, r *http.Request) {
 	if mode == "chunked" {
 		w.Header().Set("Content-Type", "application/json")
 		ohlc := &OHLC{}
-		enc := json.NewEncoder(w)
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -217,6 +215,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		enc := writer.ChunkedEncoder(w, r)
 
 		i := 0
 		if e := proxy(cmd, -1, func(bin []byte) error {
@@ -238,7 +237,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 			}
 
 			i++
-			if (i % 100 == 0) {
+			if i%100 == 0 {
 				flusher.Flush()
 			}
 			return nil
@@ -349,7 +348,6 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	if mode == "chunked" {
 		w.Header().Set("Content-Type", "application/json")
 		ohlc := &OHLC{}
-		enc := json.NewEncoder(w)
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -359,6 +357,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+		enc := writer.ChunkedEncoder(w, r)
 
 		i := 0
 		if e := proxy(cmd, -1, func(bin []byte) error {
@@ -380,7 +379,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			}
 
 			i++
-			if (i % 100 == 0) {
+			if i%100 == 0 {
 				flusher.Flush()
 			}
 			return nil
