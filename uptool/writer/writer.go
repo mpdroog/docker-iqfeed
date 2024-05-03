@@ -1,7 +1,9 @@
 package writer
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -11,6 +13,9 @@ import (
 
 type Encoder interface {
 	Encode(interface{}) error
+}
+type StringEncoder interface {
+	Write(record []string) error
 }
 
 type PrettyJSONEncoder struct {
@@ -49,6 +54,17 @@ func (p *PrettyJSONEncoder) Encode(data interface{}) error {
 	return nil
 }
 
+type WrappedCSV struct {
+	W *csv.Writer
+}
+
+func (w *WrappedCSV) Encode(data interface{}) error {
+	return fmt.Errorf("Incorrectly used")
+}
+func (w *WrappedCSV) Write(record []string) error {
+	return w.W.Write(record)
+}
+
 // Encode function
 func Encode(w http.ResponseWriter, r *http.Request, data interface{}) error {
 	accept := r.Header.Get("Accept")
@@ -70,7 +86,9 @@ func Encode(w http.ResponseWriter, r *http.Request, data interface{}) error {
 		w.Write(s)
 		return nil
 	}
+	// TODO: Some CSV writer?
 
+	// JSON
 	isCurl := strings.Contains(r.Header.Get("User-Agent"), "curl/")
 	if isCurl {
 		// Coloured output for CLI
@@ -103,6 +121,10 @@ func ChunkedEncoder(w http.ResponseWriter, r *http.Request) Encoder {
 	if strings.Contains(accept, "application/x-msgpack") {
 		w.Header().Set("Content-Type", "application/x-msgpack")
 		return msgpack.NewEncoder(w)
+	}
+	if strings.Contains(accept, "text/csv") {
+		w.Header().Set("Content-Type", "text/csv")
+		return &WrappedCSV{W: csv.NewWriter(w)}
 	}
 
 	// default, content-type set by encoder

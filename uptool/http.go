@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -204,7 +205,6 @@ func data(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mode == "chunked" {
-		w.Header().Set("Content-Type", "application/json")
 		ohlc := &OHLC{}
 
 		flusher, ok := w.(http.Flusher)
@@ -219,6 +219,21 @@ func data(w http.ResponseWriter, r *http.Request) {
 
 		i := 0
 		if e := proxy(cmd, -1, func(bin []byte) error {
+			csv, ok := enc.(writer.StringEncoder)
+			if ok {
+				// TODO: use bytes.SplitN and typecast?
+				buf := strings.SplitN(string(bin), ",", 9)
+				if e := csv.Write(buf); e != nil {
+					return e
+				}
+
+				i++
+				if i%100 == 0 {
+					flusher.Flush()
+				}
+				return nil
+			}
+
 			buf := bytes.SplitN(bin, []byte(","), 9)
 			if len(buf) < 7 {
 				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
@@ -260,6 +275,14 @@ func data(w http.ResponseWriter, r *http.Request) {
 		}
 
 		flusher.Flush()
+		return
+	}
+
+	if dp+100 > MaxDatapoints {
+		w.WriteHeader(400)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
+			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
+		}
 		return
 	}
 
@@ -365,7 +388,6 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mode == "chunked" {
-		w.Header().Set("Content-Type", "application/json")
 		ohlc := &OHLC{}
 
 		flusher, ok := w.(http.Flusher)
@@ -380,6 +402,21 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 
 		i := 0
 		if e := proxy(cmd, -1, func(bin []byte) error {
+			csv, ok := enc.(writer.StringEncoder)
+			if ok {
+				// TODO: use bytes.SplitN and typecast?
+				buf := strings.SplitN(string(bin), ",", 9)
+				if e := csv.Write(buf); e != nil {
+					return e
+				}
+
+				i++
+				if i%100 == 0 {
+					flusher.Flush()
+				}
+				return nil
+			}
+
 			buf := bytes.SplitN(bin, []byte(","), 9)
 			if len(buf) < 7 {
 				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
@@ -418,6 +455,14 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		}
 
 		flusher.Flush()
+		return
+	}
+
+	if dp+100 > MaxDatapoints {
+		w.WriteHeader(400)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
+			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
+		}
 		return
 	}
 

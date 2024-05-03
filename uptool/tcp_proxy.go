@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+/** maxDatapoints is the maximum of data we allow in non-chunked mode (else you get timeouts) */
+const MaxDatapoints = 10000
+
 /** defaultConnectTimeout is the default upstream.Connect timeout */
 const defaultConnectTimeout = 3 * time.Second
 
@@ -70,7 +73,6 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		return fmt.Errorf("admin not ready")
 	}
 
-	// TODO: Maybe re-use some pool?
 	upConn, e := GetConn()
 	if e != nil {
 		return e
