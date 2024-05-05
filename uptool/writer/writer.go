@@ -17,6 +17,9 @@ type Encoder interface {
 type StringEncoder interface {
 	Write(record []string) error
 }
+type FlushEncoder interface {
+	Flush()
+}
 
 type PrettyJSONEncoder struct {
 	r     *http.Request
@@ -63,6 +66,9 @@ func (w *WrappedCSV) Encode(data interface{}) error {
 }
 func (w *WrappedCSV) Write(record []string) error {
 	return w.W.Write(record)
+}
+func (w *WrappedCSV) Flush() {
+	w.W.Flush()
 }
 
 // Encode function

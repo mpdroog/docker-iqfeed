@@ -139,6 +139,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 
 			i++
 			if i%100 == 0 {
+				enc.(writer.FlushEncoder).Flush()
 				flusher.Flush()
 			}
 			return nil
@@ -182,6 +183,9 @@ func search(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if fenc, ok := enc.(writer.FlushEncoder); ok {
+		fenc.Flush()
+	}
 	flusher.Flush()
 	return
 }
@@ -269,6 +273,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 
 				i++
 				if i%100 == 0 {
+					enc.(writer.FlushEncoder).Flush()
 					flusher.Flush()
 				}
 				return nil
@@ -314,6 +319,9 @@ func data(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		if fenc, ok := enc.(writer.FlushEncoder); ok {
+			fenc.Flush()
+		}
 		flusher.Flush()
 		return
 	}
@@ -445,19 +453,20 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			csv, ok := enc.(writer.StringEncoder)
 			if ok {
 				// TODO: use bytes.SplitN and typecast?
-				buf := strings.SplitN(string(bin), ",", 9)
+				buf := strings.SplitN(string(bin), ",", 10)
 				if e := csv.Write(buf); e != nil {
 					return e
 				}
 
 				i++
 				if i%100 == 0 {
+					enc.(writer.FlushEncoder).Flush()
 					flusher.Flush()
 				}
 				return nil
 			}
 
-			buf := bytes.SplitN(bin, []byte(","), 9)
+			buf := bytes.SplitN(bin, []byte(","), 10)
 			if len(buf) < 7 {
 				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
 			}
@@ -494,6 +503,9 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		if fenc, ok := enc.(writer.FlushEncoder); ok {
+			fenc.Flush()
+		}
 		flusher.Flush()
 		return
 	}
