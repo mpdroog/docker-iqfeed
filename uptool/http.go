@@ -115,21 +115,54 @@ func search(w http.ResponseWriter, r *http.Request) {
 		cmd = []byte(fmt.Sprintf("SBF,%s,%s,%s,%s", args["field"], args["search"], "t", args["type"]))
 	}
 
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		w.WriteHeader(400)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
+			fmt.Printf("HTTP[intervals] Flusher e=%s\n", e.Error())
+		}
+		return
+	}
+	enc := writer.ChunkedEncoder(w, r)
+
+	i := 0
 	// Parse lines
-	var out []SearchLine
+	var line SearchLine
 	if e := proxy(cmd, -1, func(bin []byte) error {
+		csv, ok := enc.(writer.StringEncoder)
+		if ok {
+			// TODO: use bytes.SplitN and typecast?
+			buf := strings.SplitN(string(bin), ",", 9)
+			if e := csv.Write(buf); e != nil {
+				return e
+			}
+
+			i++
+			if i%100 == 0 {
+				flusher.Flush()
+			}
+			return nil
+		}
+
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 6 {
 			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
 		}
 
 		// LS,TSLA,21,1,TESLA  INC.,
-		out = append(out, SearchLine{
-			Ticker:      string(buf[1]),
-			MarketId:    string(buf[2]),
-			Description: string(buf[4]),
-			Type:        string(buf[3]),
-		})
+		line.Ticker = string(buf[1])
+		line.MarketId = string(buf[2])
+		line.Description = string(buf[4])
+		line.Type = string(buf[3])
+
+		if e := enc.Encode(line); e != nil {
+			return e
+		}
+
+		i++
+		if i%100 == 0 {
+			flusher.Flush()
+		}
 		return nil
 
 	}); e != nil {
@@ -141,9 +174,16 @@ func search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if e := writer.Encode(w, r, out); e != nil {
-		fmt.Printf("buf.Flush e=%s\n", e.Error())
+	if i == 0 {
+		// Nothing sent to client
+		w.WriteHeader(404)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+			fmt.Printf("HTTP[data] noData e=%s\n", e.Error())
+		}
 	}
+
+	flusher.Flush()
+	return
 }
 
 func data(w http.ResponseWriter, r *http.Request) {
