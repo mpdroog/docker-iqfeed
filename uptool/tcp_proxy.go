@@ -102,12 +102,12 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 
 		// read until EOM
 		bin, e := rUp.ReadBytes(byte('\n'))
+		if e != nil {
+			return e
+		}
 		bin = bytes.TrimSpace(bin)
 		if Verbose {
 			fmt.Printf("stream<< %s\n", bin)
-		}
-		if e != nil {
-			return e
 		}
 
 		if tok := isError(bin); len(tok) > 0 {
