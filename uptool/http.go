@@ -131,6 +131,11 @@ func search(w http.ResponseWriter, r *http.Request) {
 	if e := proxy(cmd, -1, func(bin []byte) error {
 		csv, ok := enc.(writer.StringEncoder)
 		if ok {
+			if i == 0 {
+				if e := csv.Write([]string{"MessageID", "TimeStamp", "High", "Low", "Open", "Close", "TotalVolume"}); e != nil {
+					return e
+				}
+			}
 			// TODO: use bytes.SplitN and typecast?
 			buf := strings.SplitN(string(bin), ",", 9)
 			if e := csv.Write(buf); e != nil {
@@ -265,6 +270,12 @@ func data(w http.ResponseWriter, r *http.Request) {
 		if e := proxy(cmd, -1, func(bin []byte) error {
 			csv, ok := enc.(writer.StringEncoder)
 			if ok {
+				if i == 0 {
+					if e := csv.Write([]string{"MessageID", "TimeStamp", "High", "Low", "Open", "Close", "TotalVolume"}); e != nil {
+						return e
+					}
+				}
+
 				// TODO: use bytes.SplitN and typecast?
 				buf := strings.SplitN(string(bin), ",", 9)
 				if e := csv.Write(buf); e != nil {
@@ -452,6 +463,12 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		if e := proxy(cmd, -1, func(bin []byte) error {
 			csv, ok := enc.(writer.StringEncoder)
 			if ok {
+				if i == 0 {
+					if e := csv.Write([]string{"MessageID", "TimeStamp", "High", "Low", "Open", "Close", "TotalVolume"}); e != nil {
+						return e
+					}
+				}
+
 				// TODO: use bytes.SplitN and typecast?
 				buf := strings.SplitN(string(bin), ",", 10)
 				if e := csv.Write(buf); e != nil {
