@@ -132,7 +132,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 		csv, ok := enc.(writer.StringEncoder)
 		if ok {
 			if i == 0 {
-				if e := csv.Write([]string{"RequestID", "MessageID", "Symbol", "ListedMarketID", "SecurityTypeID", "Name"}); e != nil {
+				if e := csv.Write([]string{"MessageID", "Symbol", "ListedMarketID", "SecurityTypeID", "Name", ""}); e != nil {
 					return e
 				}
 			}
@@ -271,7 +271,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 			csv, ok := enc.(writer.StringEncoder)
 			if ok {
 				if i == 0 {
-					if e := csv.Write([]string{"RequestID", "MessageID", "DateStamp", "High", "Low", "Open", "Close", "PeriodVolume", "OpenInterest"}); e != nil {
+					if e := csv.Write([]string{"MessageID", "DateStamp", "High", "Low", "Open", "Close", "PeriodVolume", "OpenInterest", ""}); e != nil {
 						return e
 					}
 				}
@@ -464,7 +464,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 			csv, ok := enc.(writer.StringEncoder)
 			if ok {
 				if i == 0 {
-					if e := csv.Write([]string{"RequestID", "MessageID", "TimeStamp", "High", "Low", "Open", "Close", "TotalVolume", "PeriodVolume", "NumberofTrades"}); e != nil {
+					if e := csv.Write([]string{"MessageID", "TimeStamp", "High", "Low", "Open", "Close", "TotalVolume", "PeriodVolume", "NumberofTrades", ""}); e != nil {
 						return e
 					}
 				}
