@@ -37,7 +37,7 @@ func (p *PrettyJSONEncoder) Encode(data interface{}) error {
 		}
 		if p.first {
 			p.first = false
-			p.w.Header().Set("Content-Type", "application/json")
+			p.w.Header().Set("Content-Type", "application/stream+json")
 		}
 		p.w.Write(s)
 		return nil
@@ -50,7 +50,7 @@ func (p *PrettyJSONEncoder) Encode(data interface{}) error {
 	}
 	if p.first {
 		p.first = false
-		p.w.Header().Set("Content-Type", "application/json")
+		p.w.Header().Set("Content-Type", "application/stream+json")
 	}
 	p.w.Write(s)
 	p.w.Write([]byte("\r\n"))
@@ -120,12 +120,12 @@ func Encode(w http.ResponseWriter, r *http.Request, data interface{}) error {
 
 func ChunkedEncoder(w http.ResponseWriter, r *http.Request) Encoder {
 	accept := r.Header.Get("Accept")
-	if strings.Contains(accept, "application/stream+json") {
-		w.Header().Set("Content-Type", "application/json")
+	if strings.Contains(accept, "application/json") {
+		w.Header().Set("Content-Type", "application/stream+json")
 		return json.NewEncoder(w)
 	}
-	if strings.Contains(accept, "application/stream+x-msgpack") {
-		w.Header().Set("Content-Type", "application/x-msgpack")
+	if strings.Contains(accept, "application/x-msgpack") {
+		w.Header().Set("Content-Type", "application/stream+x-msgpack")
 		return msgpack.NewEncoder(w)
 	}
 	if strings.Contains(accept, "text/csv") {
@@ -134,7 +134,7 @@ func ChunkedEncoder(w http.ResponseWriter, r *http.Request) Encoder {
 	}
 
 	// default, content-type set by encoder
-	return &PrettyJSONEncoder{w: w, r: r}
+	return &PrettyJSONEncoder{w: w, r: r, first: true}
 }
 
 // ErrorRes struct
