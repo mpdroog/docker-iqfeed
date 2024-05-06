@@ -161,13 +161,27 @@ func tcpProxy(conn tcpserver.Connection) {
 		r := bufio.NewReader(conn)
 		// 1. client cmd
 		bin, e := r.ReadBytes(byte('\n'))
-		bin = bytes.TrimSpace(bin)
 		if e != nil {
 			fmt.Printf("conn.ReadBytes e=%s\n", e.Error())
 			if _, e := conn.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
 			}
 			return
+		}
+		bin = bytes.TrimSpace(bin)
+
+		// fake the responsive, we're already taking care of this
+		if bytes.HasPrefix(bin, []byte("S,SET PROTOCOL,")) {
+			if !bytes.HasSuffix(bin, []byte("6.2")) {
+				if _, e := conn.Write([]byte("E,PROTOCOL_DEPRECATED_NEED_6.2\r\n")); e != nil {
+					fmt.Printf("handleConn: %s\n", e.Error())
+				}
+				return
+			}
+			if _, e := conn.Write([]byte("S,CURRENT PROTOCOL,6.2\r\n")); e != nil {
+				fmt.Printf("handleConn: %s\n", e.Error())
+			}
+			continue
 		}
 
 		if e := proxy(bin, -1, func(line []byte) error {
