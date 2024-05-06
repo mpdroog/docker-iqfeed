@@ -137,7 +137,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// TODO: use bytes.SplitN and typecast?
-			buf := strings.SplitN(string(bin), ",", 9)
+			buf := strings.SplitN(string(bin), ",", 6)
 			if e := csv.Write(buf); e != nil {
 				return e
 			}
@@ -150,7 +150,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}
 
-		buf := bytes.SplitN(bin, []byte(","), 9)
+		buf := bytes.SplitN(bin, []byte(","), 6)
 		if len(buf) < 6 {
 			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
 		}
@@ -162,6 +162,9 @@ func search(w http.ResponseWriter, r *http.Request) {
 		line.Type = string(buf[3])
 
 		if e := enc.Encode(line); e != nil {
+			return e
+		}
+		if e := w.Write([]byte("\r\n")); e != nil {
 			return e
 		}
 
