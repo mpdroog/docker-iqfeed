@@ -180,7 +180,7 @@ func tcpProxy(conn tcpserver.Connection) {
 		}
 
 		// fake the responsive, we're already taking care of this
-		if bytes.HasPrefix(bin, []byte("S,SET PROTOCOL,")) {
+		if bytes.HasPrefix(bin, []byte("S,SET PROTOCOL")) {
 			if !bytes.HasSuffix(bin, []byte("6.2")) {
 				if Verbose {
 					fmt.Printf("handleConn: E,PROTOCOL_DEPRECATED_NEED_6.2\n")
