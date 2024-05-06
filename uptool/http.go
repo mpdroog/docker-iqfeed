@@ -164,7 +164,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 		if e := enc.Encode(line); e != nil {
 			return e
 		}
-		if e := w.Write([]byte("\r\n")); e != nil {
+		if _, e := w.Write([]byte("\r\n")); e != nil {
 			return e
 		}
 
