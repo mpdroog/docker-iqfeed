@@ -120,11 +120,11 @@ func Encode(w http.ResponseWriter, r *http.Request, data interface{}) error {
 
 func ChunkedEncoder(w http.ResponseWriter, r *http.Request) Encoder {
 	accept := r.Header.Get("Accept")
-	if strings.Contains(accept, "application/json") {
+	if strings.Contains(accept, "application/stream+json") {
 		w.Header().Set("Content-Type", "application/json")
 		return json.NewEncoder(w)
 	}
-	if strings.Contains(accept, "application/x-msgpack") {
+	if strings.Contains(accept, "application/stream+x-msgpack") {
 		w.Header().Set("Content-Type", "application/x-msgpack")
 		return msgpack.NewEncoder(w)
 	}
