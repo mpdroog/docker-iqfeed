@@ -80,6 +80,9 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 	defer FreeConn(upConn)
 	rUp := bufio.NewReader(upConn)
 
+	if Verbose {
+		fmt.Printf("stream>> %s\n", cmd)
+	}
 	if _, e := upConn.Write(cmd); e != nil {
 		return e
 	}
@@ -97,6 +100,9 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		stop := time.Now().Add(deadlineStream)
 		if e := upConn.SetDeadline(stop); e != nil {
 			fmt.Printf("handleConn: %s\n", e.Error())
+			if Verbose {
+				fmt.Printf("stream<< E,CONN_SET_DEADLINE\n")
+			}
 			return fmt.Errorf("E,CONN_SET_DEADLINE")
 		}
 
@@ -162,7 +168,7 @@ func tcpProxy(conn tcpserver.Connection) {
 		// 1. client cmd
 		bin, e := r.ReadBytes(byte('\n'))
 		if e != nil {
-			fmt.Printf("conn.ReadBytes e=%s\n", e.Error())
+			fmt.Printf("handleConn: conn.ReadBytes e=%s\n", e.Error())
 			if _, e := conn.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
 			}
@@ -173,10 +179,17 @@ func tcpProxy(conn tcpserver.Connection) {
 		// fake the responsive, we're already taking care of this
 		if bytes.HasPrefix(bin, []byte("S,SET PROTOCOL,")) {
 			if !bytes.HasSuffix(bin, []byte("6.2")) {
+				if Verbose {
+					fmt.Printf("handleConn: E,PROTOCOL_DEPRECATED_NEED_6.2\n")
+				}
 				if _, e := conn.Write([]byte("E,PROTOCOL_DEPRECATED_NEED_6.2\r\n")); e != nil {
 					fmt.Printf("handleConn: %s\n", e.Error())
 				}
 				return
+			}
+
+			if Verbose {
+				fmt.Printf("handleConn: FAKE_CURRENT_PROTOCOL,6.2")
 			}
 			if _, e := conn.Write([]byte("S,CURRENT PROTOCOL,6.2\r\n")); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
@@ -187,19 +200,22 @@ func tcpProxy(conn tcpserver.Connection) {
 		if e := proxy(bin, -1, func(line []byte) error {
 			stop := time.Now().Add(deadlineCmd)
 			if e := conn.SetDeadline(stop); e != nil {
-				return fmt.Errorf("conn.SetDeadline e=%s", e.Error())
+				return fmt.Errorf("handleConn: conn.SetDeadline e=%s", e.Error())
 			}
 
 			if _, e := conn.Write(line); e != nil {
-				return fmt.Errorf("conn.Write e=%s\n", e.Error())
+				return fmt.Errorf("handleConn: conn.Write e=%s\n", e.Error())
 			}
 			if _, e := conn.Write([]byte("\r\n")); e != nil {
-				return fmt.Errorf("conn.Write e=%s\n", e.Error())
+				return fmt.Errorf("handleConn: conn.Write e=%s\n", e.Error())
 			}
 			return nil
 
 		}); e != nil {
-			fmt.Printf("handleConn: %s\n", e.Error())
+			fmt.Printf("handleConn: proxy %s\n", e.Error())
+			if _, e := conn.Write([]byte("E,"+e.Error()+"\r\n")); e != nil {
+				fmt.Printf("handleConn: conn.Write e=%s\n", e.Error())
+			}
 			return
 		}
 	}
