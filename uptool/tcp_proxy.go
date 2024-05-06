@@ -153,6 +153,7 @@ func tcpProxy(conn tcpserver.Connection) {
 		fmt.Printf("handleConn: new req\n")
 	}
 
+	r := bufio.NewReader(conn)
 	for {
 		// Start the clock
 		deadline := time.Now().Add(deadlineCmd)
@@ -164,17 +165,19 @@ func tcpProxy(conn tcpserver.Connection) {
 			return
 		}
 
-		r := bufio.NewReader(conn)
 		// 1. client cmd
 		bin, e := r.ReadBytes(byte('\n'))
 		if e != nil {
 			fmt.Printf("handleConn: conn.ReadBytes e=%s\n", e.Error())
 			if _, e := conn.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
-				fmt.Printf("handleConn: %s\n", e.Error())
+				fmt.Printf("handleConn closeWrite: %s\n", e.Error())
 			}
 			return
 		}
 		bin = bytes.TrimSpace(bin)
+		if Verbose {
+			fmt.Printf("handleConn<< %s\n", bin)
+		}
 
 		// fake the responsive, we're already taking care of this
 		if bytes.HasPrefix(bin, []byte("S,SET PROTOCOL,")) {
@@ -189,7 +192,7 @@ func tcpProxy(conn tcpserver.Connection) {
 			}
 
 			if Verbose {
-				fmt.Printf("handleConn: FAKE_CURRENT_PROTOCOL,6.2")
+				fmt.Printf("handleConn: FAKE_CURRENT_PROTOCOL,6.2\n")
 			}
 			if _, e := conn.Write([]byte("S,CURRENT PROTOCOL,6.2\r\n")); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
