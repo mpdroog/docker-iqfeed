@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"net/http/pprof"
 )
 
 var (
@@ -592,6 +593,13 @@ func httpListen(addr string) {
 	mux.Add("/ohlc", data, "Read OHLC ?asset=AAPL&range=DAILY|WEEKLY|MONTHLY&datapoints=10")
 	mux.Add("/ohlc-intervals", intervals, "Read OHLC (interval in seconds) ?asset=AAPL&interval=100&datapoints=10")
 	mux.Add("/search", search, "Search assets ?field=SYMBOL|DESCRIPTION&search=*&type=EQUITY")
+
+	// pprof
+	mux.Add("/debug/pprof/", pprof.Index, "performance-profiler")
+	mux.Add("/debug/pprof/cmdline", pprof.Cmdline, "Cmdline responds with the running program's command line")
+	mux.Add("/debug/pprof/profile", pprof.Profile, "Profile responds with the pprof-formatted cpu profile.")
+	mux.Add("/debug/pprof/symbol", pprof.Symbol, "Symbol looks up the program counters listed in the request, responding with a table mapping program counters to function names.")
+	mux.Add("/debug/pprof/trace", pprof.Trace, "Trace responds with the execution trace in binary form.")
 
 	var e error
 	server := &http.Server{
