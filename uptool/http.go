@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"github.com/itshosted/webutils/muxdoc"
@@ -33,6 +34,57 @@ type SearchLine struct {
 	MarketId    string
 	Description string
 	Type        string
+}
+
+func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader []byte) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		w.WriteHeader(400)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
+			fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+		}
+		return
+	}
+
+	// buffer 1MB
+	ww := bufio.NewWriterSize(w, 1024*1024)
+	defer ww.Flush()
+
+	i := 0
+	if e := proxy(cmd, -1, func(bin []byte) error {
+		if i == 0 {
+			if _, e := ww.Write(csvHeader); e != nil {
+				return e
+			}
+			if _, e := ww.Write([]byte("\r\n")); e != nil {
+				return e
+			}
+		}
+		if _, e := ww.Write(bin); e != nil {
+			return e
+		}
+		if _, e := ww.Write([]byte("\r\n")); e != nil {
+			return e
+		}
+
+		i++
+		return nil
+
+	}); e != nil {
+		fmt.Printf("HTTP[intervals] proxy e=%s\n", e.Error())
+		// devnote: cannot print error as it might crash in-between
+		return
+	}
+
+	if i == 0 {
+		// Nothing sent to client
+		w.WriteHeader(404)
+		if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+			fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+		}
+	}
+
+	flusher.Flush()
 }
 
 // Return API Documentation (paths)
@@ -258,86 +310,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mode == "chunked" {
-		ohlc := &OHLC{}
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
-				fmt.Printf("HTTP[intervals] Flusher e=%s\n", e.Error())
-			}
-			return
-		}
-		enc := writer.ChunkedEncoder(w, r)
-
-		i := 0
-		if e := proxy(cmd, -1, func(bin []byte) error {
-			csv, ok := enc.(writer.StringEncoder)
-			if ok {
-				if i == 0 {
-					if e := csv.Write([]string{"MessageID", "DateStamp", "High", "Low", "Open", "Close", "PeriodVolume", "OpenInterest", ""}); e != nil {
-						return e
-					}
-				}
-
-				// TODO: use bytes.SplitN and typecast?
-				buf := strings.SplitN(string(bin), ",", 9)
-				if e := csv.Write(buf); e != nil {
-					return e
-				}
-
-				i++
-				if i%100 == 0 {
-					enc.(writer.FlushEncoder).Flush()
-					flusher.Flush()
-				}
-				return nil
-			}
-
-			buf := bytes.SplitN(bin, []byte(","), 9)
-			if len(buf) < 7 {
-				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
-			}
-
-			// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
-			ohlc.Datetime = string(buf[1])
-			ohlc.High = string(buf[2])
-			ohlc.Low = string(buf[3])
-			ohlc.Open = string(buf[4])
-			ohlc.Close = string(buf[5])
-			ohlc.Volume = string(buf[6])
-
-			if e := enc.Encode(ohlc); e != nil {
-				return e
-			}
-
-			i++
-			if i%100 == 0 {
-				flusher.Flush()
-			}
-			return nil
-
-		}); e != nil {
-			fmt.Printf("HTTP[data] proxy e=%s\n", e.Error())
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
-				fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
-			}
-			return
-		}
-
-		if i == 0 {
-			// Nothing sent to client
-			w.WriteHeader(404)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
-				fmt.Printf("HTTP[data] noData e=%s\n", e.Error())
-			}
-		}
-
-		if fenc, ok := enc.(writer.FlushEncoder); ok {
-			fenc.Flush()
-		}
-		flusher.Flush()
+		chunkedStream(w, r, cmd, []byte("MessageID, DateStamp, High, Low, Open, Close, PeriodVolume, OpenInterest,"))
 		return
 	}
 
@@ -451,83 +424,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if mode == "chunked" {
-		ohlc := &OHLC{}
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
-			}
-			return
-		}
-		enc := writer.ChunkedEncoder(w, r)
-
-		i := 0
-		if e := proxy(cmd, -1, func(bin []byte) error {
-			csv, ok := enc.(writer.StringEncoder)
-			if ok {
-				if i == 0 {
-					if e := csv.Write([]string{"MessageID", "TimeStamp", "High", "Low", "Open", "Close", "TotalVolume", "PeriodVolume", "NumberofTrades", ""}); e != nil {
-						return e
-					}
-				}
-
-				// TODO: use bytes.SplitN and typecast?
-				buf := strings.SplitN(string(bin), ",", 10)
-				if e := csv.Write(buf); e != nil {
-					return e
-				}
-
-				i++
-				if i%100 == 0 {
-					enc.(writer.FlushEncoder).Flush()
-					flusher.Flush()
-				}
-				return nil
-			}
-
-			buf := bytes.SplitN(bin, []byte(","), 10)
-			if len(buf) < 7 {
-				return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
-			}
-
-			// LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
-			ohlc.Datetime = string(buf[1])
-			ohlc.High = string(buf[2])
-			ohlc.Low = string(buf[3])
-			ohlc.Open = string(buf[4])
-			ohlc.Close = string(buf[5])
-			ohlc.Volume = string(buf[6])
-
-			if e := enc.Encode(ohlc); e != nil {
-				return e
-			}
-
-			i++
-			if i%100 == 0 {
-				flusher.Flush()
-			}
-			return nil
-
-		}); e != nil {
-			fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
-			// devnote: cannot print error as it might crash in-between
-			return
-		}
-
-		if i == 0 {
-			// Nothing sent to client
-			w.WriteHeader(404)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
-			}
-		}
-
-		if fenc, ok := enc.(writer.FlushEncoder); ok {
-			fenc.Flush()
-		}
-		flusher.Flush()
+		chunkedStream(w, r, cmd, []byte("MessageID, TimeStamp, High, Low, Open, Close, TotalVolume, PeriodVolume, NumberofTrades,"))
 		return
 	}
 
@@ -607,7 +504,7 @@ func httpListen(addr string) {
 		TLSConfig:    nil,
 		Handler:      mux.Mux,
 		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		// WriteTimeout: 10 * time.Second,
 		IdleTimeout:  20 * time.Second,
 	}
 
