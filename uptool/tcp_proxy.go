@@ -157,7 +157,7 @@ func tcpProxy(conn tcpserver.Connection) {
 	}
 
 	r := bufio.NewReader(conn)
-	w := bufio.NewWriter(conn)
+	w := bufio.NewWriterSize(conn, 1024*1024)
 	defer w.Flush()
 
 	for {
@@ -225,6 +225,11 @@ func tcpProxy(conn tcpserver.Connection) {
 			if _, e := w.Write([]byte("E,"+e.Error()+"\r\n")); e != nil {
 				fmt.Printf("handleConn: conn.Write e=%s\n", e.Error())
 			}
+			return
+		}
+		// Flush once done
+		if e := w.Flush(); e != nil {
+			fmt.Printf("handleConn: %s\n", e.Error())
 			return
 		}
 	}
