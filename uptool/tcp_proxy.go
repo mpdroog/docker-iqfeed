@@ -157,12 +157,15 @@ func tcpProxy(conn tcpserver.Connection) {
 	}
 
 	r := bufio.NewReader(conn)
+	w := bufio.NewWriter(conn)
+	defer w.Flush()
+
 	for {
 		// Start the clock
 		deadline := time.Now().Add(deadlineCmd)
 		if e := conn.SetDeadline(deadline); e != nil {
 			fmt.Printf("handleConn: %s\n", e.Error())
-			if _, e := conn.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
+			if _, e := w.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
 			}
 			return
@@ -172,7 +175,7 @@ func tcpProxy(conn tcpserver.Connection) {
 		bin, e := r.ReadBytes(byte('\n'))
 		if e != nil {
 			fmt.Printf("handleConn: conn.ReadBytes e=%s\n", e.Error())
-			if _, e := conn.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
+			if _, e := w.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
 				fmt.Printf("handleConn closeWrite: %s\n", e.Error())
 			}
 			return
@@ -188,7 +191,7 @@ func tcpProxy(conn tcpserver.Connection) {
 				if Verbose {
 					fmt.Printf("handleConn: E,PROTOCOL_DEPRECATED_NEED_6.2\n")
 				}
-				if _, e := conn.Write([]byte("E,PROTOCOL_DEPRECATED_NEED_6.2\r\n")); e != nil {
+				if _, e := w.Write([]byte("E,PROTOCOL_DEPRECATED_NEED_6.2\r\n")); e != nil {
 					fmt.Printf("handleConn: %s\n", e.Error())
 				}
 				return
@@ -197,7 +200,7 @@ func tcpProxy(conn tcpserver.Connection) {
 			if Verbose {
 				fmt.Printf("handleConn: FAKE_CURRENT_PROTOCOL,6.2\n")
 			}
-			if _, e := conn.Write([]byte("S,CURRENT PROTOCOL,6.2\r\n")); e != nil {
+			if _, e := w.Write([]byte("S,CURRENT PROTOCOL,6.2\r\n")); e != nil {
 				fmt.Printf("handleConn: %s\n", e.Error())
 			}
 			continue
@@ -209,17 +212,17 @@ func tcpProxy(conn tcpserver.Connection) {
 				return fmt.Errorf("handleConn: conn.SetDeadline e=%s", e.Error())
 			}
 
-			if _, e := conn.Write(line); e != nil {
+			if _, e := w.Write(line); e != nil {
 				return fmt.Errorf("handleConn: conn.Write e=%s\n", e.Error())
 			}
-			if _, e := conn.Write([]byte("\r\n")); e != nil {
+			if _, e := w.Write([]byte("\r\n")); e != nil {
 				return fmt.Errorf("handleConn: conn.Write e=%s\n", e.Error())
 			}
 			return nil
 
 		}); e != nil {
 			fmt.Printf("handleConn: proxy %s\n", e.Error())
-			if _, e := conn.Write([]byte("E,"+e.Error()+"\r\n")); e != nil {
+			if _, e := w.Write([]byte("E,"+e.Error()+"\r\n")); e != nil {
 				fmt.Printf("handleConn: conn.Write e=%s\n", e.Error())
 			}
 			return
