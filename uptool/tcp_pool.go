@@ -32,7 +32,7 @@ func ConnInit(upConn net.Conn) error {
 		bin, e := rUp.ReadBytes(byte('\n'))
 		bin = bytes.TrimSpace(bin)
 		if Verbose {
-			fmt.Printf("stream<< %s\n", bin)
+			fmt.Printf("ConnInit stream<< %s\n", bin)
 		}
 		if e != nil {
 			return e
@@ -55,7 +55,7 @@ func ConnTest(upConn net.Conn) error {
 		bin, e := rUp.ReadBytes(byte('\n'))
 		bin = bytes.TrimSpace(bin)
 		if Verbose {
-			fmt.Printf("stream<< %s\n", bin)
+			fmt.Printf("ConnTest stream<< %s\n", bin)
 		}
 		if e != nil {
 			return e

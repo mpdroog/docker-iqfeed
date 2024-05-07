@@ -41,7 +41,6 @@ func admin() {
 			time.Sleep(time.Millisecond * 250)
 		}
 
-		// TODO: Timeouts?
 		if Verbose {
 			fmt.Printf("[admin] connect\n")
 		}
@@ -89,7 +88,7 @@ func admin() {
 			bin, _, e := c.ReadLine()
 			bin = bytes.TrimSpace(bin)
 			if e != nil {
-				fmt.Printf("[admin.WriteTS] e=%s\n", e.Error())
+				fmt.Printf("[admin.ReadLine] e=%s\n", e.Error())
 				break
 			}
 			if Verbose {

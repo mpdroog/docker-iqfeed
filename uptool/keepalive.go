@@ -22,7 +22,7 @@ func keepalive(upAddr string) {
 	}
 
 	for {
-		time.Sleep(time.Second * 1)
+		time.Sleep(time.Second * 30)
 
 		if Verbose {
 			fmt.Printf("[keepalive] for.Next")
@@ -80,7 +80,7 @@ func keepalive(upAddr string) {
 			bin, e := r.ReadBytes(byte('\n'))
 			bin = bytes.TrimSpace(bin)
 			if Verbose {
-				fmt.Printf("line=%s\n", bin)
+				fmt.Printf("[keepalive] line=%s\n", bin)
 			}
 			if e != nil {
 				fmt.Printf("[keepalive ReadBytes]: %s\n", e.Error())
@@ -90,9 +90,11 @@ func keepalive(upAddr string) {
 			if Verbose {
 				fmt.Printf("[keepalive] success.Next\n")
 			}
-			time.Sleep(time.Second * 1)
+			time.Sleep(time.Second * 30)
 		}
 
-		upConn.Close()
+		if e := upConn.Close(); e != nil {
+			fmt.Printf("[keepAlive Close]: %s\n", e.Error())
+		}
 	}
 }
