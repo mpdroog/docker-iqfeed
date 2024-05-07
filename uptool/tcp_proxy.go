@@ -78,7 +78,6 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		return e
 	}
 	defer FreeConn(upConn)
-	rUp := bufio.NewReader(upConn)
 
 	if Verbose {
 		fmt.Printf("stream>> %s\n", cmd)
@@ -90,7 +89,11 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		return e
 	}
 
-	for i := 0; ; i++ {
+	i := 0
+	scanner := bufio.NewScanner(upConn)
+
+	for scanner.Scan() {
+		i++
 		if lineLimit != -1 && i >= lineLimit {
 			// Stop
 			return fmt.Errorf("CRIT: loopLimit(%d) reached, something wrong in code?\n", lineLimit)
@@ -107,11 +110,7 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		}
 
 		// read until EOM
-		bin, e := rUp.ReadBytes(byte('\n'))
-		if e != nil {
-			return e
-		}
-		bin = bytes.TrimSpace(bin)
+		bin := scanner.Bytes()
 		if Verbose {
 			fmt.Printf("stream<< %s\n", bin)
 		}
@@ -134,6 +133,10 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		if e := cb(bin); e != nil {
 			return e
 		}
+	}
+
+	if e := scanner.Err(); e != nil {
+		return e
 	}
 	return nil
 }
