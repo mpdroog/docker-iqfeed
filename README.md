@@ -11,7 +11,7 @@ https://github.com/mpdroog/docker-iqfeed/blob/main/iqfeed.env.example
 
 Next pull this project from hub.docker
 ```bash
-docker pull mpdroog/docker-iqfeed:latest
+docker pull mpdroog/docker-iqfeed:v1
 ```
 
 OR build it yourself with `build.sh`
@@ -47,7 +47,10 @@ HTTP 8080 - Historical Data
 
 HTTP example
 =========
+The datapoints through HTTP are limited to `MaxDatapoints(10.000)`. If you want a higher amount use the second example that reads minute-data using `mode=chunked` with CSV.
+
 ```bash
+# Get 1 daily candle for MicroStrategy as JSON
 $ curl "http://localhost:8080/ohlc?asset=MSTR&range=DAILY&datapoints=1"
 [
   {
@@ -58,6 +61,12 @@ $ curl "http://localhost:8080/ohlc?asset=MSTR&range=DAILY&datapoints=1"
     "Open": "111.1000"
   }
 ]
+
+# Get ALL minute candles for Apple (since inception) and stream as CSV
+$ curl --header "Accept: text/csv" "http://localhost:8080/ohlc-intervals?asset=AAPL&mode=chunked&interval=60&datapoints=0"
+MessageID, TimeStamp, High, Low, Open, Close, TotalVolume, PeriodVolume, NumberofTrades,
+LH,2024-05-10 05:32:00,184.7600,184.7500,184.7500,184.7600,32048,250,0,
+....
 ```
 
 For all accepted HTTP-endpoints there is a human-readable overview on http://localhost:8080
