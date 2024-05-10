@@ -72,7 +72,12 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 
 	}); e != nil {
 		fmt.Printf("HTTP[intervals] proxy e=%s\n", e.Error())
-		// devnote: cannot print error as it might crash in-between
+		if i == 0 {
+			w.WriteHeader(404)
+			if e := writer.Err(w, r, writer.ErrorRes{Error: "Read failure", Detail: e.Error()}); e != nil {
+				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			}
+		}
 		return
 	}
 
