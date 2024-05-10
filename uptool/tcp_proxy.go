@@ -201,8 +201,13 @@ func tcpProxy(conn tcpserver.Connection) {
 				fmt.Printf("handleConn: FAKE_CURRENT_PROTOCOL,6.2\n")
 			}
 			if _, e := w.Write([]byte("S,CURRENT PROTOCOL,6.2\r\n")); e != nil {
-				fmt.Printf("handleConn: %s\n", e.Error())
+				fmt.Printf("handleConn curProt: %s\n", e.Error())
 			}
+			if e := w.Flush(); e != nil {
+				fmt.Printf("handleConn Flush: %s\n", e.Error())
+				return
+			}
+
 			continue
 		}
 
@@ -227,6 +232,7 @@ func tcpProxy(conn tcpserver.Connection) {
 			}
 			return
 		}
+
 		// Flush once done
 		if e := w.Flush(); e != nil {
 			fmt.Printf("handleConn: %s\n", e.Error())
