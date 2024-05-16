@@ -8,10 +8,10 @@ import (
 	"github.com/mpdroog/docker-iqfeed/iqapi/writer"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"strconv"
 	"strings"
 	"time"
-	"net/http/pprof"
 )
 
 var (
@@ -39,8 +39,7 @@ type SearchLine struct {
 func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader []byte) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		w.WriteHeader(400)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
+		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
 			fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 		}
 		return
@@ -73,8 +72,7 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 	}); e != nil {
 		fmt.Printf("HTTP[intervals] proxy e=%s\n", e.Error())
 		if i == 0 {
-			w.WriteHeader(404)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "Read failure", Detail: e.Error()}); e != nil {
+			if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "Read failure", Detail: e.Error()}); e != nil {
 				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 			}
 		}
@@ -83,8 +81,7 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 
 	if i == 0 {
 		// Nothing sent to client
-		w.WriteHeader(404)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+		if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "No data"}); e != nil {
 			fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 		}
 	}
@@ -94,8 +91,8 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 
 // Return API Documentation (paths)
 func doc(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(404)
 	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(404)
 	w.Write([]byte(mux.String()))
 }
 
@@ -134,8 +131,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 		for _, key := range keys {
 			val := r.URL.Query().Get(key)
 			if val == "" {
-				w.WriteHeader(400)
-				if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[" + key + "] missing"}); e != nil {
+				if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[" + key + "] missing"}); e != nil {
 					fmt.Printf("HTTP[search] e=%s\n", e.Error())
 				}
 				return
@@ -147,8 +143,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 				} else if val == "DESCRIPTION" {
 					val = "d"
 				} else {
-					w.WriteHeader(400)
-					if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[" + key + "] invalid, can only search on SYMBOL|DESCRIPTION"}); e != nil {
+					if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[" + key + "] invalid, can only search on SYMBOL|DESCRIPTION"}); e != nil {
 						fmt.Printf("HTTP[search] e=%s\n", e.Error())
 					}
 					return
@@ -159,8 +154,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 				if val == "EQUITY" {
 					val = "1"
 				} else {
-					w.WriteHeader(400)
-					if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[" + key + "] invalid, can only have EQUITY"}); e != nil {
+					if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[" + key + "] invalid, can only have EQUITY"}); e != nil {
 						fmt.Printf("HTTP[search] e=%s\n", e.Error())
 					}
 					return
@@ -175,8 +169,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		w.WriteHeader(400)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
+		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
 			fmt.Printf("HTTP[intervals] Flusher e=%s\n", e.Error())
 		}
 		return
@@ -234,8 +227,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 
 	}); e != nil {
 		fmt.Printf("HTTP[search] e=%s\n", e.Error())
-		w.WriteHeader(400)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
 			fmt.Printf("HTTP[search] e=%s\n", e.Error())
 		}
 		return
@@ -243,8 +235,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 
 	if i == 0 {
 		// Nothing sent to client
-		w.WriteHeader(404)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "No data"}); e != nil {
 			fmt.Printf("HTTP[data] noData e=%s\n", e.Error())
 		}
 	}
@@ -266,24 +257,21 @@ func data(w http.ResponseWriter, r *http.Request) {
 	{
 		asset := r.URL.Query().Get("asset")
 		if asset == "" {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[asset] missing"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[asset] missing"}); e != nil {
 				fmt.Printf("HTTP[data] e=%s\n", e.Error())
 			}
 			return
 		}
 		rangeStr := r.URL.Query().Get("range")
 		if rangeStr == "" {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[range] missing"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[range] missing"}); e != nil {
 				fmt.Printf("HTTP[data] e=%s\n", e.Error())
 			}
 			return
 		}
 		dpStr := r.URL.Query().Get("datapoints")
 		if dpStr == "" {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] missing"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[datapoints] missing"}); e != nil {
 				fmt.Printf("HTTP[data] e=%s\n", e.Error())
 			}
 			return
@@ -291,8 +279,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 		var e error
 		dp, e = strconv.Atoi(dpStr)
 		if e != nil {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] not a number"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[datapoints] not a number"}); e != nil {
 				fmt.Printf("HTTP[data] e=%s\n", e.Error())
 			}
 			return
@@ -306,8 +293,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 		} else if rangeStr == "MONTHLY" {
 			cmd = []byte(fmt.Sprintf("HMX,%s,%d", asset, dp))
 		} else {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[range] not valid, possible=DAILY|WEEKLY|MONTHLY"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[range] not valid, possible=DAILY|WEEKLY|MONTHLY"}); e != nil {
 				fmt.Printf("HTTP[data] e=%s\n", e.Error())
 			}
 			return
@@ -320,8 +306,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if dp+100 > MaxDatapoints {
-		w.WriteHeader(400)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
+		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
 			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
 		}
 		return
@@ -350,8 +335,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 
 	}); e != nil {
 		fmt.Printf("HTTP[data] proxy e=%s\n", e.Error())
-		w.WriteHeader(400)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
 			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
 		}
 		return
@@ -359,14 +343,13 @@ func data(w http.ResponseWriter, r *http.Request) {
 
 	if i == 0 {
 		// Nothing sent to client
-		w.WriteHeader(404)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+		if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "No data"}); e != nil {
 			fmt.Printf("HTTP[data] err e=%s\n", e.Error())
 		}
 		return
 	}
 
-	if e := writer.Encode(w, r, out); e != nil {
+	if e := writer.Encode(w, r, 200, out); e != nil {
 		fmt.Printf("HTTP[data] flush e=%s\n", e.Error())
 	}
 }
@@ -382,16 +365,14 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	{
 		asset := r.URL.Query().Get("asset")
 		if asset == "" {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[asset] missing"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[asset] missing"}); e != nil {
 				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 			}
 			return
 		}
 		intervalStr := r.URL.Query().Get("interval")
 		if intervalStr == "" {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[interval] missing"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[interval] missing"}); e != nil {
 				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 			}
 			return
@@ -399,8 +380,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		var e error
 		interval, e = strconv.Atoi(intervalStr)
 		if e != nil {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[interval] not a number"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[interval] not a number"}); e != nil {
 				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 			}
 			return
@@ -409,16 +389,14 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 
 		dpStr := r.URL.Query().Get("datapoints")
 		if dpStr == "" {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] missing"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[datapoints] missing"}); e != nil {
 				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 			}
 			return
 		}
 		dp, e = strconv.Atoi(dpStr)
 		if e != nil {
-			w.WriteHeader(400)
-			if e := writer.Err(w, r, writer.ErrorRes{Error: "GET[datapoints] not a number"}); e != nil {
+			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[datapoints] not a number"}); e != nil {
 				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
 			}
 			return
@@ -434,8 +412,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if dp+100 > MaxDatapoints {
-		w.WriteHeader(400)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
+		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
 			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
 		}
 		return
@@ -464,8 +441,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 
 	}); e != nil {
 		fmt.Printf("HTTP[data] e=%s\n", e.Error())
-		w.WriteHeader(400)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
+		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
 			fmt.Printf("HTTP[data] e=%s\n", e.Error())
 		}
 		return
@@ -473,14 +449,13 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 
 	if i == 0 {
 		// Nothing sent to client
-		w.WriteHeader(404)
-		if e := writer.Err(w, r, writer.ErrorRes{Error: "No data"}); e != nil {
+		if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "No data"}); e != nil {
 			fmt.Printf("HTTP[data] e=%s\n", e.Error())
 		}
 		return
 	}
 
-	if e := writer.Encode(w, r, out); e != nil {
+	if e := writer.Encode(w, r, 200, out); e != nil {
 		fmt.Printf("buf.Flush e=%s\n", e.Error())
 	}
 }
@@ -505,12 +480,12 @@ func httpListen(addr string) {
 
 	var e error
 	server := &http.Server{
-		Addr:         addr,
-		TLSConfig:    nil,
-		Handler:      mux.Mux,
-		ReadTimeout:  5 * time.Second,
+		Addr:        addr,
+		TLSConfig:   nil,
+		Handler:     mux.Mux,
+		ReadTimeout: 5 * time.Second,
 		// WriteTimeout: 10 * time.Second,
-		IdleTimeout:  20 * time.Second,
+		IdleTimeout: 20 * time.Second,
 	}
 
 	ln, e = net.Listen("tcp", server.Addr)

@@ -72,12 +72,18 @@ func (w *WrappedCSV) Flush() {
 }
 
 // Encode function
-func Encode(w http.ResponseWriter, r *http.Request, data interface{}) error {
+func Encode(w http.ResponseWriter, r *http.Request, httpCode int, data interface{}) error {
+	if httpCode == 0 {
+		httpCode = 200
+	}
+
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
 		// Machine, dense output
 		enc := json.NewEncoder(w)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(httpCode)
+
 		if e := enc.Encode(data); e != nil {
 			return e
 		}
@@ -89,6 +95,8 @@ func Encode(w http.ResponseWriter, r *http.Request, data interface{}) error {
 			return e
 		}
 		w.Header().Set("Content-Type", "application/x-msgpack")
+		w.WriteHeader(httpCode)
+
 		w.Write(s)
 		return nil
 	}
@@ -103,6 +111,8 @@ func Encode(w http.ResponseWriter, r *http.Request, data interface{}) error {
 			return e
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(httpCode)
+
 		w.Write(s)
 		return nil
 	}
@@ -113,6 +123,8 @@ func Encode(w http.ResponseWriter, r *http.Request, data interface{}) error {
 		return e
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpCode)
+
 	w.Write(s)
 	w.Write([]byte("\r\n"))
 	return nil
@@ -144,6 +156,6 @@ type ErrorRes struct {
 }
 
 // Err return a error based on the ErroRes struct format
-func Err(w http.ResponseWriter, r *http.Request, m ErrorRes) error {
-	return Encode(w, r, &m)
+func Err(w http.ResponseWriter, r *http.Request, httpCode int, m ErrorRes) error {
+	return Encode(w, r, httpCode, &m)
 }

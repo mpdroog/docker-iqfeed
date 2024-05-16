@@ -227,7 +227,7 @@ func tcpProxy(conn tcpserver.Connection) {
 
 		}); e != nil {
 			fmt.Printf("handleConn: proxy %s\n", e.Error())
-			if _, e := w.Write([]byte("E,"+e.Error()+"\r\n")); e != nil {
+			if _, e := w.Write([]byte("E," + e.Error() + "\r\n")); e != nil {
 				fmt.Printf("handleConn: conn.Write e=%s\n", e.Error())
 			}
 			return
