@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/itshosted/webutils/muxdoc"
 	"github.com/mpdroog/docker-iqfeed/iqapi/writer"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -40,7 +41,7 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
-			fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			slog.Error("HTTP[intervals] getFlusher", "e", e.Error())
 		}
 		return
 	}
@@ -70,10 +71,10 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 		return nil
 
 	}); e != nil {
-		fmt.Printf("HTTP[intervals] proxy e=%s\n", e.Error())
+		slog.Error("HTTP[intervals] proxy", "e", e.Error())
 		if i == 0 {
 			if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "Read failure", Detail: e.Error()}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+				slog.Error("HTTP[intervals] proxy.Write", "e", e.Error())
 			}
 		}
 		return
@@ -82,7 +83,7 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 	if i == 0 {
 		// Nothing sent to client
 		if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "No data"}); e != nil {
-			fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+			slog.Error("HTTP[intervals] proxy.WriteNodata", "e", e.Error())
 		}
 	}
 
@@ -106,11 +107,11 @@ func verbose(w http.ResponseWriter, r *http.Request) {
 		msg += "ON"
 	}
 	msg += `"}`
-	fmt.Printf("HTTP.Verbosity set to %t\n", Verbose)
+	slog.Info("HTTP[verbose]", "set", Verbose)
 
 	w.Header().Set("Content-Type", "application/json")
 	if _, e := w.Write([]byte(msg)); e != nil {
-		fmt.Printf("verbose: " + e.Error())
+		slog.Error("HTTP[verbose] Write", "e", e.Error())
 		return
 	}
 }
@@ -132,7 +133,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 			val := r.URL.Query().Get(key)
 			if val == "" {
 				if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[" + key + "] missing"}); e != nil {
-					fmt.Printf("HTTP[search] e=%s\n", e.Error())
+					slog.Error("HTTP[search] WriteMissing", "e", e.Error())
 				}
 				return
 			}
@@ -144,7 +145,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 					val = "d"
 				} else {
 					if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[" + key + "] invalid, can only search on SYMBOL|DESCRIPTION"}); e != nil {
-						fmt.Printf("HTTP[search] e=%s\n", e.Error())
+						slog.Error("HTTP[search] WriteInvalidField", "e", e.Error())
 					}
 					return
 				}
@@ -155,7 +156,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 					val = "1"
 				} else {
 					if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[" + key + "] invalid, can only have EQUITY"}); e != nil {
-						fmt.Printf("HTTP[search] e=%s\n", e.Error())
+						slog.Error("HTTP[search] WriteInvalidType", "e", e.Error())
 					}
 					return
 				}
@@ -170,7 +171,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
-			fmt.Printf("HTTP[intervals] Flusher e=%s\n", e.Error())
+			slog.Error("HTTP[search] getFlusher", "e", e.Error())
 		}
 		return
 	}
@@ -226,9 +227,9 @@ func search(w http.ResponseWriter, r *http.Request) {
 		return nil
 
 	}); e != nil {
-		fmt.Printf("HTTP[search] e=%s\n", e.Error())
+		slog.Error("HTTP[search] proxy", "e", e.Error())
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
-			fmt.Printf("HTTP[search] e=%s\n", e.Error())
+			slog.Error("HTTP[search] WriteUpstreamError", "e", e.Error())
 		}
 		return
 	}
@@ -236,8 +237,9 @@ func search(w http.ResponseWriter, r *http.Request) {
 	if i == 0 {
 		// Nothing sent to client
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "No data"}); e != nil {
-			fmt.Printf("HTTP[data] noData e=%s\n", e.Error())
+			slog.Error("HTTP[search] WriteNoData", "e", e.Error())
 		}
+		return
 	}
 
 	if fenc, ok := enc.(writer.FlushEncoder); ok {
@@ -258,21 +260,21 @@ func data(w http.ResponseWriter, r *http.Request) {
 		asset := r.URL.Query().Get("asset")
 		if asset == "" {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[asset] missing"}); e != nil {
-				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+				slog.Error("HTTP[data] WriteAssetMissing", "e", e.Error())
 			}
 			return
 		}
 		rangeStr := r.URL.Query().Get("range")
 		if rangeStr == "" {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[range] missing"}); e != nil {
-				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+				slog.Error("HTTP[data] WriteRangeMissing", "e", e.Error())
 			}
 			return
 		}
 		dpStr := r.URL.Query().Get("datapoints")
 		if dpStr == "" {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[datapoints] missing"}); e != nil {
-				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+				slog.Error("HTTP[data] WriteDatapointsMissing", "e", e.Error())
 			}
 			return
 		}
@@ -280,7 +282,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 		dp, e = strconv.Atoi(dpStr)
 		if e != nil {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[datapoints] not a number"}); e != nil {
-				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+				slog.Error("HTTP[data] WriteDtatapointNaN", "e", e.Error())
 			}
 			return
 		}
@@ -294,7 +296,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 			cmd = []byte(fmt.Sprintf("HMX,%s,%d", asset, dp))
 		} else {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[range] not valid, possible=DAILY|WEEKLY|MONTHLY"}); e != nil {
-				fmt.Printf("HTTP[data] e=%s\n", e.Error())
+				slog.Error("HTTP[data] WriteInvalidRange", "e", e.Error())
 			}
 			return
 		}
@@ -307,7 +309,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 
 	if dp+100 > MaxDatapoints {
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
-			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
+			slog.Error("HTTP[data] WriteMaxDatapoints", "e", e.Error())
 		}
 		return
 	}
@@ -334,9 +336,9 @@ func data(w http.ResponseWriter, r *http.Request) {
 		return nil
 
 	}); e != nil {
-		fmt.Printf("HTTP[data] proxy e=%s\n", e.Error())
+		slog.Error("HTTP[data] proxy", "e", e.Error())
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
-			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
+			slog.Error("HTTP[data] WriteUpstreamError", "e", e.Error())
 		}
 		return
 	}
@@ -344,13 +346,13 @@ func data(w http.ResponseWriter, r *http.Request) {
 	if i == 0 {
 		// Nothing sent to client
 		if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "No data"}); e != nil {
-			fmt.Printf("HTTP[data] err e=%s\n", e.Error())
+			slog.Error("HTTP[data] WriteNoData", "e", e.Error())
 		}
 		return
 	}
 
 	if e := writer.Encode(w, r, 200, out); e != nil {
-		fmt.Printf("HTTP[data] flush e=%s\n", e.Error())
+		slog.Error("HTTP[data] WriteEncode", "e", e.Error())
 	}
 }
 
@@ -366,14 +368,14 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		asset := r.URL.Query().Get("asset")
 		if asset == "" {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[asset] missing"}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+				slog.Error("HTTP[intervals] WriteAssetMissing", "e", e.Error())
 			}
 			return
 		}
 		intervalStr := r.URL.Query().Get("interval")
 		if intervalStr == "" {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[interval] missing"}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+				slog.Error("HTTP[intervals] WriteIntervalMissing", "e", e.Error())
 			}
 			return
 		}
@@ -381,7 +383,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		interval, e = strconv.Atoi(intervalStr)
 		if e != nil {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[interval] not a number"}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+				slog.Error("HTTP[intervals] WriteIntervalNaN", "e", e.Error())
 			}
 			return
 		}
@@ -390,14 +392,14 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		dpStr := r.URL.Query().Get("datapoints")
 		if dpStr == "" {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[datapoints] missing"}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+				slog.Error("HTTP[intervals] WriteDtapointsMissing", "e", e.Error())
 			}
 			return
 		}
 		dp, e = strconv.Atoi(dpStr)
 		if e != nil {
 			if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "GET[datapoints] not a number"}); e != nil {
-				fmt.Printf("HTTP[intervals] e=%s\n", e.Error())
+				slog.Error("HTTP[intervals] WriteDtapointsMissing", "e", e.Error())
 			}
 			return
 		}
@@ -413,7 +415,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 
 	if dp+100 > MaxDatapoints {
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
-			fmt.Printf("HTTP[data] proxy.Err e=%s\n", e.Error())
+			slog.Error("HTTP[intervals] WriteMaxDatapoints", "e", e.Error())
 		}
 		return
 	}
@@ -440,9 +442,9 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 		return nil
 
 	}); e != nil {
-		fmt.Printf("HTTP[data] e=%s\n", e.Error())
+		slog.Error("HTTP[intervals] proxy", "e", e.Error())
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Upstream error", Detail: e.Error()}); e != nil {
-			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			slog.Error("HTTP[intervals] WriteUpstreamError", "e", e.Error())
 		}
 		return
 	}
@@ -450,13 +452,13 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	if i == 0 {
 		// Nothing sent to client
 		if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "No data"}); e != nil {
-			fmt.Printf("HTTP[data] e=%s\n", e.Error())
+			slog.Error("HTTP[intervals] WriteNoData", "e", e.Error())
 		}
 		return
 	}
 
 	if e := writer.Encode(w, r, 200, out); e != nil {
-		fmt.Printf("buf.Flush e=%s\n", e.Error())
+		slog.Error("HTTP[intervals] WriteEncode", "e", e.Error())
 	}
 }
 

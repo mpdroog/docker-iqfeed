@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/maurice2k/tcpserver"
+	"log/slog"
 	"time"
 )
 
@@ -78,9 +79,9 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		return e
 	}
 	defer FreeConn(upConn)
-
+	// Devnote: timeout is set by GetConn with deadlineStream
 	if Verbose {
-		fmt.Printf("stream>> %s\n", cmd)
+		slog.Info("tcp_proxy(proxy)", "stream", cmd)
 	}
 	if _, e := upConn.Write(cmd); e != nil {
 		return e
@@ -102,9 +103,9 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		// give streaming some extra time
 		stop := time.Now().Add(deadlineStream)
 		if e := upConn.SetDeadline(stop); e != nil {
-			fmt.Printf("handleConn: %s\n", e.Error())
+			slog.Error("tcp_proxy(proxy) setDeadline", "e", e.Error())
 			if Verbose {
-				fmt.Printf("stream<< E,CONN_SET_DEADLINE\n")
+				slog.Info("tcp_proxy(proxy)", "stream", "E,CONN_SET_DEADLINE")
 			}
 			return fmt.Errorf("E,CONN_SET_DEADLINE")
 		}
@@ -112,7 +113,7 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		// read until EOM
 		bin := scanner.Bytes()
 		if Verbose {
-			fmt.Printf("stream<< %s\n", bin)
+			slog.Info("tcp_proxy(proxy)", "stream", bin)
 		}
 
 		if tok := isError(bin); len(tok) > 0 {
@@ -125,7 +126,7 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		if bytes.Equal(bin, []byte(EOM)) {
 			// Done!
 			if Verbose {
-				fmt.Printf("End-Of-Stream\n")
+				slog.Info("tcp_proxy(proxy)", "End of stream")
 			}
 			break
 		}
@@ -146,14 +147,14 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 func tcpProxy(conn tcpserver.Connection) {
 	defer func() {
 		if e := conn.Close(); e != nil {
-			fmt.Printf("handleConn.Close: %s\n", e.Error())
+			slog.Error("tcp_proxy close", "e", e.Error())
 		}
 		if Verbose {
-			fmt.Printf("handleConn: dropped conn\n")
+			slog.Info("tcp_proxy dropped conn")
 		}
 	}()
 	if Verbose {
-		fmt.Printf("handleConn: new req\n")
+		slog.Info("tcp_proxy new req")
 	}
 
 	r := bufio.NewReader(conn)
@@ -164,9 +165,9 @@ func tcpProxy(conn tcpserver.Connection) {
 		// Start the clock
 		deadline := time.Now().Add(deadlineCmd)
 		if e := conn.SetDeadline(deadline); e != nil {
-			fmt.Printf("handleConn: %s\n", e.Error())
+			slog.Error("tcp_proxy setDeadline", "e", e.Error())
 			if _, e := w.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
-				fmt.Printf("handleConn: %s\n", e.Error())
+				slog.Error("tcp_proxy WriteSetDeadline", "e", e.Error())
 			}
 			return
 		}
@@ -174,37 +175,37 @@ func tcpProxy(conn tcpserver.Connection) {
 		// 1. client cmd
 		bin, e := r.ReadBytes(byte('\n'))
 		if e != nil {
-			fmt.Printf("handleConn: conn.ReadBytes e=%s\n", e.Error())
+			slog.Error("tcp_proxy readBytes", "e", e.Error())
 			if _, e := w.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
-				fmt.Printf("handleConn closeWrite: %s\n", e.Error())
+				slog.Error("tcp_proxy writeConnReadCmd", "e", e.Error())
 			}
 			return
 		}
 		bin = bytes.TrimSpace(bin)
 		if Verbose {
-			fmt.Printf("handleConn<< %s\n", bin)
+			slog.Info("tcp_proxy", "bin", bin)
 		}
 
 		// fake the responsive, we're already taking care of this
 		if bytes.HasPrefix(bin, []byte("S,SET PROTOCOL")) {
 			if !bytes.HasSuffix(bin, []byte("6.2")) {
 				if Verbose {
-					fmt.Printf("handleConn: E,PROTOCOL_DEPRECATED_NEED_6.2\n")
+					slog.Info("tcp_proxy", "e", "PROTOCOL_DEPRECATED_NEED_6.2")
 				}
 				if _, e := w.Write([]byte("E,PROTOCOL_DEPRECATED_NEED_6.2\r\n")); e != nil {
-					fmt.Printf("handleConn: %s\n", e.Error())
+					slog.Error("tcp_proxy writeDeprecated", "e", e.Error())
 				}
 				return
 			}
 
 			if Verbose {
-				fmt.Printf("handleConn: FAKE_CURRENT_PROTOCOL,6.2\n")
+				slog.Info("tcp_proxy fakeCurrentProtocol")
 			}
 			if _, e := w.Write([]byte("S,CURRENT PROTOCOL,6.2\r\n")); e != nil {
-				fmt.Printf("handleConn curProt: %s\n", e.Error())
+				slog.Error("tcp_proxy writeCurrentProtocol", "e", e.Error())
 			}
 			if e := w.Flush(); e != nil {
-				fmt.Printf("handleConn Flush: %s\n", e.Error())
+				slog.Error("tcp_proxy FlushProtocol", "e", e.Error())
 				return
 			}
 
@@ -226,16 +227,16 @@ func tcpProxy(conn tcpserver.Connection) {
 			return nil
 
 		}); e != nil {
-			fmt.Printf("handleConn: proxy %s\n", e.Error())
+			slog.Error("tcp_proxy proxy", "e", e.Error())
 			if _, e := w.Write([]byte("E," + e.Error() + "\r\n")); e != nil {
-				fmt.Printf("handleConn: conn.Write e=%s\n", e.Error())
+				slog.Error("tcp_proxy writeError", "e", e.Error())
 			}
 			return
 		}
 
 		// Flush once done
 		if e := w.Flush(); e != nil {
-			fmt.Printf("handleConn: %s\n", e.Error())
+			slog.Error("tcp_proxy FlushProxy", "e", e.Error())
 			return
 		}
 	}

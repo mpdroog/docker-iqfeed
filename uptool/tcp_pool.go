@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -32,7 +33,7 @@ func ConnInit(upConn net.Conn) error {
 		bin, e := rUp.ReadBytes(byte('\n'))
 		bin = bytes.TrimSpace(bin)
 		if Verbose {
-			fmt.Printf("ConnInit stream<< %s\n", bin)
+			slog.Info("tcp_pool(ConnInit)", "stream", bin)
 		}
 		if e != nil {
 			return e
@@ -55,7 +56,7 @@ func ConnTest(upConn net.Conn) error {
 		bin, e := rUp.ReadBytes(byte('\n'))
 		bin = bytes.TrimSpace(bin)
 		if Verbose {
-			fmt.Printf("ConnTest stream<< %s\n", bin)
+			slog.Info("tcp_pool(ConnTest)", "stream", bin)
 		}
 		if e != nil {
 			return e
@@ -73,26 +74,26 @@ func ConnKeepAlive() {
 		time.Sleep(40 * time.Second)
 		mutex.Lock()
 		if Verbose {
-			fmt.Printf("GetConn::start\n")
+			slog.Info("tcp_pool(ConnKeepAlive) start")
 		}
 
 		for k, conn := range conns {
 			deadline := time.Now().Add(time.Second * 2)
 			if e := conn.SetDeadline(deadline); e != nil {
-				fmt.Printf("ConnKeepAlive e=%s\n", e.Error())
+				slog.Error("tcp_pool(ConnKeepAlive) SetDeadline", "e", e.Error())
 				delete(conns, k)
 				continue
 			}
 
 			if e := ConnTest(conn); e != nil {
-				fmt.Printf("ConnKeepAlive(test) e=%s\n", e.Error())
+				slog.Error("tcp_pool(ConnKeepAlive) ConnTest", "e", e.Error())
 				delete(conns, k)
 				continue
 			}
 		}
 
 		if Verbose {
-			fmt.Printf("GetConn::finish\n")
+			slog.Info("tcp_pool(ConnKeepAlive) finish")
 		}
 		mutex.Unlock()
 	}
@@ -115,7 +116,7 @@ func GetConn() (net.Conn, error) {
 
 		// Ensure the conn is good
 		if e := ConnTest(conn); e != nil {
-			fmt.Printf("GetConn(test) e=%s\n", e.Error())
+			slog.Error("tcp_pool(GetConn) ConnTest", "e", e.Error())
 			delete(conns, k)
 			continue
 		}
@@ -138,9 +139,8 @@ func GetConn() (net.Conn, error) {
 	}
 	// Ensure the conn is good
 	if e := ConnTest(conn); e != nil {
-		fmt.Printf("GetConn(new-test) e=%s\n", e.Error())
 		upConn.Close() // ignore any error
-		continue
+		return nil, e
 	}
 
 	return upConn, nil
@@ -149,7 +149,7 @@ func GetConn() (net.Conn, error) {
 func FreeConn(n net.Conn) {
 	// Ensure the conn is good before we offer it again
 	if e := ConnTest(n); e != nil {
-		fmt.Printf("FreeConn(test) e=%s\n", e.Error())
+		slog.Error("tcp_pool(FreeConn) ConnTest", "e", e.Error())
 		return
 	}
 

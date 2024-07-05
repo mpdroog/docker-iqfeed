@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/go-reap"
 	"github.com/maurice2k/tcpserver"
+	"log/slog"
 	"os"
 	"sync"
 )
@@ -15,6 +16,9 @@ var (
 )
 
 func main() {
+	l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(l)
+
 	Running = new(sync.Map)
 	flag.BoolVar(&Verbose, "v", false, "Show all that happens")
 
@@ -38,8 +42,8 @@ func main() {
 	}
 	vv := os.Getenv("VERBOSE")
 	if vv != "" {
-		fmt.Printf("env.VERBOSE toggled\n")
 		Verbose = true
+		slog.Info("main[Verbose] set through environment", "verbose", Verbose)
 	}
 	// TODO: Crash if " symbol is found in env-vars?
 
@@ -56,7 +60,7 @@ func main() {
 		}, PostCmd: "mv", PostArgs: []string{"/home/wine/DTN/IQFeed/IQConnectLog.txt", "/home/wine/DTN/IQFeed/IQConnectLog.txt.1"}},
 	}
 	if Verbose {
-		fmt.Printf("exec=%+v\n", cmds)
+		slog.Info("main[exec]", "cmds", cmds)
 	}
 
 	// TODO: Maybe add some stupdity check for infinit waiting?
@@ -66,7 +70,7 @@ func main() {
 	if reap.IsSupported() {
 		go reap.ReapChildren(nil, nil, nil, nil)
 	} else {
-		fmt.Println("WARN: go-reap isn't supported on your platform")
+		slog.Warn("main[reap]", "go-reap isn't supported on your platform")
 	}
 
 	var wg sync.WaitGroup
@@ -87,7 +91,7 @@ func main() {
 	{
 		server, e := tcpserver.NewServer(":9101")
 		if e != nil {
-			fmt.Println(e)
+			slog.Error("tcpserver.NewServer", "e", e.Error())
 			return
 		}
 

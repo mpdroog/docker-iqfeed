@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"fmt"
+	"log/slog"
 	"net"
 	"time"
 )
@@ -17,7 +17,7 @@ func keepalive(upAddr string) {
 	time.Sleep(time.Second * 10)
 	dur, e := time.ParseDuration("10s")
 	if e != nil {
-		fmt.Printf("[keepAlive parseDuration]: %s\n", e.Error())
+		slog.Error("keepalive parseDuration", "e", e.Error())
 		panic("DevErr")
 	}
 
@@ -25,21 +25,21 @@ func keepalive(upAddr string) {
 		time.Sleep(time.Second * 30)
 
 		if Verbose {
-			fmt.Printf("[keepalive] for.Next")
+			slog.Info("keepalive forNext")
 		}
 
 		if _, ok := Running.Load("iqfeed"); !ok {
-			fmt.Printf("[keepalive] iqfeed not running\n")
+			slog.Info("keepalive iqfeed not running")
 			continue
 		}
 		if _, ok := Running.Load("admin"); !ok {
-			fmt.Printf("[keepalive] admin-conn not running\n")
+			slog.Info("keepalive admin-conn not running")
 			continue
 		}
 
 		upConn, e := net.DialTimeout("tcp", upAddr, defaultConnectTimeout)
 		if e != nil {
-			fmt.Printf("[keepAlive dial]: %s\n", e.Error())
+			slog.Error("keepalive dial", "e", e.Error())
 			continue
 		}
 		r := bufio.NewReader(upConn)
@@ -47,18 +47,18 @@ func keepalive(upAddr string) {
 		deadline := time.Now().Add(dur)
 		if e := upConn.SetDeadline(deadline); e != nil {
 			upConn.Close()
-			fmt.Printf("[keepalive setDeadline]: %s\n", e.Error())
+			slog.Error("keepalive setDeadline", "e", e.Error())
 			continue
 		}
 
 		if _, e := upConn.Write([]byte("S,SET PROTOCOL,6.2\r\n")); e != nil {
 			upConn.Close()
-			fmt.Printf("[upConn write] %s\n", e.Error())
+			slog.Error("keepalive upConnWriteProtocol", "e", e.Error())
 			continue
 		}
 		if _, e := upConn.Write([]byte("S,SET CLIENT NAME,KEEPALIVE\r\n")); e != nil {
 			upConn.Close()
-			fmt.Printf("[upConn write] %s\n", e.Error())
+			slog.Error("keepalive upConnWriteName", "e", e.Error())
 			continue
 		}
 
@@ -66,13 +66,13 @@ func keepalive(upAddr string) {
 		for {
 			deadline := time.Now().Add(dur)
 			if e := upConn.SetDeadline(deadline); e != nil {
-				fmt.Printf("[keepalive setDeadline]: %s\n", e.Error())
+				slog.Error("keepalive forSetDeadline", "e", e.Error())
 				break
 			}
 
 			// Request timestamp
 			if _, e := upConn.Write([]byte("T\r\n")); e != nil {
-				fmt.Printf("[keepalive Write]: %s\n", e.Error())
+				slog.Error("keepalive write", "e", e.Error())
 				break
 			}
 
@@ -80,21 +80,21 @@ func keepalive(upAddr string) {
 			bin, e := r.ReadBytes(byte('\n'))
 			bin = bytes.TrimSpace(bin)
 			if Verbose {
-				fmt.Printf("[keepalive] line=%s\n", bin)
+				slog.Info("keepalive", "line", bin)
 			}
 			if e != nil {
-				fmt.Printf("[keepalive ReadBytes]: %s\n", e.Error())
+				slog.Error("keepalive readBytes", "e", e.Error())
 				break
 			}
 
 			if Verbose {
-				fmt.Printf("[keepalive] success.Next\n")
+				slog.Info("keepalive successNext")
 			}
 			time.Sleep(time.Second * 30)
 		}
 
 		if e := upConn.Close(); e != nil {
-			fmt.Printf("[keepAlive Close]: %s\n", e.Error())
+			slog.Error("keepalive Close", "e", e.Error())
 		}
 	}
 }

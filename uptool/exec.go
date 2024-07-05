@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,19 +52,23 @@ func run(name, path string, flags []string) error {
 	// Wait X-sec before marking as running
 	time.Sleep(time.Second * 1)
 	if Verbose {
-		fmt.Printf("[%s] alive after 1sec\n", name)
+		slog.Info("exec[run] wakeup", "name", name)
 	}
 
 	if run {
 		// Save state
 		Running.Store(name, struct{}{})
 		if Verbose {
-			fmt.Printf("[%s] marked as running\n", name)
+			slog.Info("exec[run] running", "name", name)
 		}
 	}
 
 	wg.Wait()
 	Running.Delete(name)
+
+	if e == nil && cmd.ProcessState.ExitCode() != 0 {
+		e = fmt.Errorf("[%s] exited with exit=%d", name, cmd.ProcessState.ExitCode())
+	}
 
 	return e
 }
@@ -82,25 +87,25 @@ func ensureRunning(wg *sync.WaitGroup, cmds map[string]CmdInfo) {
 						if _, ok := Running.Load(info.Dep); ok == true {
 							// Service avail
 							if Verbose {
-								fmt.Printf("[%s] dep avail\n", name)
+								slog.Info("exec[ensureRunning] depAvail", "name", name)
 							}
 							break
 						}
 						if Verbose {
-							fmt.Printf("[%s] await %s\n", name, info.Dep)
+							slog.Info("exec[ensureRunning] await", "name", name, "dep", info.Dep)
 						}
 						time.Sleep(time.Millisecond * 250) // 0.25sec
 					}
 				}
 				e := run(name, info.Cmd, info.Args)
 				if e != nil {
-					fmt.Printf("[%s] %s\n", name, e.Error())
+					slog.Error("exec[ensureRunning] process.Stop", "name", name, "e", e.Error())
 				}
 
 				if len(info.PostCmd) > 0 {
 					// Run something after the process stopped
 					if e := run(name, info.PostCmd, info.PostArgs); e != nil {
-						fmt.Printf("[%s-post] %s\n", name, e.Error())
+						slog.Error("exec[ensureRunning] PostCmd", "name", name, "e", e.Error())
 					}
 				}
 
@@ -111,7 +116,7 @@ func ensureRunning(wg *sync.WaitGroup, cmds map[string]CmdInfo) {
 				}*/
 				//lastSleep = time.Now().Unix()
 				if Verbose {
-					fmt.Printf("[%s] for.next\n", name)
+					slog.Info("exec[ensureRunning] forNext", "name", name)
 				}
 			}
 		}(name, info)

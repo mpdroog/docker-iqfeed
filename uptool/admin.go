@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"fmt"
+	"log/slog"
 	"net"
 	"time"
 )
@@ -14,7 +14,7 @@ func admin() {
 	init := true
 	dur, e := time.ParseDuration("10s")
 	if e != nil {
-		fmt.Printf("[keepAlive parseDuration]: %s\n", e.Error())
+		slog.Error("admin[keepAlive parseDuration]", "e", e.Error())
 		panic("DevErr")
 	}
 
@@ -31,23 +31,23 @@ func admin() {
 			if _, ok := Running.Load(name); ok == true {
 				// Service avail
 				if Verbose {
-					fmt.Printf("[%s] dep avail\n", name)
+					slog.Info("admin dep available", "name", name)
 				}
 				break
 			}
 			if Verbose {
-				fmt.Printf("[admin] await %s\n", name)
+				slog.Info("admin[await]", "name", name)
 			}
 			time.Sleep(time.Millisecond * 250)
 		}
 
 		if Verbose {
-			fmt.Printf("[admin] connect\n")
+			slog.Info("admin[connect]")
 		}
 		// Keep alive conn
 		conn, e := net.DialTimeout("tcp", "127.0.0.1:9300", defaultConnectTimeout)
 		if e != nil {
-			fmt.Printf("[admin.Dial] e=%s\n", e.Error())
+			slog.Info("admin[Dial]", "e", e.Error())
 			continue
 		}
 
@@ -58,41 +58,41 @@ func admin() {
 			deadline := time.Now().Add(dur)
 			if e := conn.SetDeadline(deadline); e != nil {
 				conn.Close()
-				fmt.Printf("[admin setDeadline]: %s\n", e.Error())
+				slog.Error("admin[setDeadline]", "e", e.Error())
 				continue
 			}
 
 			if _, e := conn.Write([]byte("T\r\n")); e != nil {
 				conn.Close() // TODO: err?
-				fmt.Printf("[admin.WriteT] e=%s\n", e.Error())
+				slog.Error("admin[writeT]", "e", e.Error())
 				continue
 			}
 			line, _, e := c.ReadLine()
 			if e != nil {
 				conn.Close() // TODO: err?
-				fmt.Printf("[admin.ReadLineT] e=%s\n", e.Error())
+				slog.Error("admin[readlineT]", "e", e.Error())
 				continue
 			}
 			if Verbose {
-				fmt.Printf("[admin.ReadLineT] %s\n", line)
+				slog.Info("admin[readlineT]", "line", line)
 			}
 		}
 
 		for {
 			deadline := time.Now().Add(dur)
 			if e := conn.SetDeadline(deadline); e != nil {
-				fmt.Printf("[admin for->setDeadline]: %s\n", e.Error())
+				slog.Error("admin[for.setDeadline]", "e", e.Error())
 				break
 			}
 
 			bin, _, e := c.ReadLine()
 			bin = bytes.TrimSpace(bin)
 			if e != nil {
-				fmt.Printf("[admin.ReadLine] e=%s\n", e.Error())
+				slog.Error("admin[readLine]", "e", e.Error())
 				break
 			}
 			if Verbose {
-				fmt.Printf("[admin.ReadLine] %s\n", bin)
+				slog.Error("admin[readLine]", "bin", bin)
 			}
 
 			// S,STATS,,,0,0,1,0,0,0,,,Not Connected,6.2.0.25,\"490914\",0,0.0,0.0,0.08,0.08,0.08,
@@ -108,7 +108,7 @@ func admin() {
 		Running.Delete("admin")
 
 		if e := conn.Close(); e != nil {
-			fmt.Printf("[admin.Close] e=%s\n", e.Error())
+			slog.Error("admin[close]", "e", e.Error())
 		}
 	}
 }
