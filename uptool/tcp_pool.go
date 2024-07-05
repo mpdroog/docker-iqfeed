@@ -136,6 +136,12 @@ func GetConn() (net.Conn, error) {
 	if e := upConn.SetDeadline(deadline); e != nil {
 		return nil, e
 	}
+	// Ensure the conn is good
+	if e := ConnTest(conn); e != nil {
+		fmt.Printf("GetConn(new-test) e=%s\n", e.Error())
+		upConn.Close() // ignore any error
+		continue
+	}
 
 	return upConn, nil
 }
