@@ -41,7 +41,7 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "Could not get Flusher-instance"}); e != nil {
-			slog.Error("HTTP[intervals] getFlusher", "e", e.Error())
+			slog.Error("HTTP[chunkedStream] getFlusher", "e", e.Error())
 		}
 		return
 	}
@@ -71,10 +71,10 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 		return nil
 
 	}); e != nil {
-		slog.Error("HTTP[intervals] proxy", "e", e.Error())
+		slog.Error("HTTP[chunkedStream] proxy", "e", e.Error())
 		if i == 0 {
 			if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "Read failure", Detail: e.Error()}); e != nil {
-				slog.Error("HTTP[intervals] proxy.Write", "e", e.Error())
+				slog.Error("HTTP[chunkedStream] proxy.Write", "e", e.Error())
 			}
 		}
 		return
@@ -83,7 +83,7 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 	if i == 0 {
 		// Nothing sent to client
 		if e := writer.Err(w, r, 404, writer.ErrorRes{Error: "No data"}); e != nil {
-			slog.Error("HTTP[intervals] proxy.WriteNodata", "e", e.Error())
+			slog.Error("HTTP[chunkedStream] proxy.WriteNodata", "e", e.Error())
 		}
 	}
 
