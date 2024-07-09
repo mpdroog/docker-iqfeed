@@ -21,8 +21,10 @@ const EOM = "!ENDMSG!,"
 /** streamReplies are all cmds we expect more than 1 result (till EOM) */
 var streamReplies map[string]struct{}
 
-var deadlineCmd time.Duration
-var deadlineStream time.Duration
+/* deadlineCmd is the time a reply for a simple req>reply gets */
+var deadlineCmd = 5 * time.Second
+/* deadlineStream is the time a reply for a bigger reply gets */
+var deadlineStream = 15 * time.Second
 
 /** init prepares tcp_proxy vars */
 func init() {
@@ -38,16 +40,6 @@ func init() {
 		"HIT": struct{}{},
 		"HDT": struct{}{},
 		"SBF": struct{}{},
-	}
-
-	var e error
-	deadlineCmd, e = time.ParseDuration("5s")
-	if e != nil {
-		panic(e)
-	}
-	deadlineStream, e = time.ParseDuration("15s")
-	if e != nil {
-		panic(e)
 	}
 }
 
@@ -117,6 +109,9 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		}
 
 		if tok := isError(bin); len(tok) > 0 {
+			if Verbose {
+				slog.Info("tcp_proxy(proxy) isError", "stream", bin, "tok", tok)
+			}
 			if len(tok) == 0 {
 				return fmt.Errorf("%s", tok)
 			}
@@ -132,6 +127,9 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		}
 
 		if e := cb(bin); e != nil {
+			if Verbose {
+				slog.Info("tcp_proxy(proxy) cbError", "stream", bin)
+			}
 			return e
 		}
 	}
