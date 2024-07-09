@@ -23,8 +23,9 @@ var streamReplies map[string]struct{}
 
 /* deadlineCmd is the time a reply for a simple req>reply gets */
 var deadlineCmd = 5 * time.Second
+
 /* deadlineStream is the time a reply for a bigger reply gets */
-var deadlineStream = 15 * time.Second
+// var deadlineStream = 15 * time.Second
 
 /** init prepares tcp_proxy vars */
 func init() {
@@ -66,35 +67,27 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		return fmt.Errorf("admin not ready")
 	}
 
-	upConn, e := GetConn()
+	conn, e := GetConn()
 	if e != nil {
 		return e
 	}
-	defer FreeConn(upConn)
-	// Devnote: timeout is set by GetConn with deadlineStream
+	defer FreeConn(conn)
+
+	if e := conn.IncreaseDeadline(deadlineCmd); e != nil {
+		return fmt.Errorf("tcp_pool(GetConn) setDeadline e=" + e.Error())
+	}
+
 	if Verbose {
 		slog.Info("tcp_proxy(proxy)", "stream", cmd)
 	}
-	if _, e := upConn.Write(cmd); e != nil {
-		return e
-	}
-	if _, e := upConn.Write([]byte("\r\n")); e != nil {
+	if _, e := conn.WriteLine(cmd); e != nil {
 		return e
 	}
 
 	i := 0
-	scanner := bufio.NewScanner(upConn)
-
-	for scanner.Scan() {
-		i++
-		if lineLimit != -1 && i >= lineLimit {
-			// Stop
-			return fmt.Errorf("CRIT: loopLimit(%d) reached, something wrong in code?\n", lineLimit)
-		}
-
-		// give streaming some extra time
-		stop := time.Now().Add(deadlineStream)
-		if e := upConn.SetDeadline(stop); e != nil {
+	for {
+		// extend timeout with 5sec every line we receive
+		if e := conn.IncreaseDeadline(deadlineCmd); e != nil {
 			slog.Error("tcp_proxy(proxy) setDeadline", "e", e.Error())
 			if Verbose {
 				slog.Info("tcp_proxy(proxy)", "stream", "E,CONN_SET_DEADLINE")
@@ -103,9 +96,12 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		}
 
 		// read until EOM
-		bin := scanner.Bytes()
+		bin, e := conn.ReadLine()
 		if Verbose {
 			slog.Info("tcp_proxy(proxy)", "stream", bin)
+		}
+		if e != nil {
+			return e
 		}
 
 		if tok := isError(bin); len(tok) > 0 {
@@ -126,6 +122,12 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 			break
 		}
 
+		i++
+		if lineLimit != -1 && i >= lineLimit {
+			// Stop
+			return fmt.Errorf("CRIT: loopLimit(%d) reached, bin=%s\n", lineLimit, string(bin))
+		}
+
 		if e := cb(bin); e != nil {
 			if Verbose {
 				slog.Info("tcp_proxy(proxy) cbError", "stream", bin)
@@ -134,9 +136,6 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		}
 	}
 
-	if e := scanner.Err(); e != nil {
-		return e
-	}
 	return nil
 }
 

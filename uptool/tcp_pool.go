@@ -10,28 +10,49 @@ import (
 	"time"
 )
 
+type PoolConn struct {
+	C net.Conn
+	R *bufio.Reader
+}
+
+func (p *PoolConn) ReadLine() ([]byte, error) {
+	bin, e := p.R.ReadBytes(byte('\n'))
+	bin = bytes.TrimSpace(bin)
+	if e != nil && len(bin) > 0 {
+		slog.Warn("tcp_pool(conn.ReadLine) dropped", "bin", string(bin))
+	}
+	return bin, e
+}
+func (p *PoolConn) WriteLine(str []byte) (int, error) {
+	return p.C.Write(append(str, []byte("\r\n")...))
+}
+func (p *PoolConn) IncreaseDeadline(deadline time.Duration) error {
+	if e := p.C.SetDeadline(time.Now().Add(deadline)); e != nil {
+		return e
+	}
+	return nil
+}
+
 var (
-	conns   map[string]net.Conn
+	conns   map[string]*PoolConn
 	counter int
 	mutex   *sync.Mutex
 )
 
 func ConnKeepAliveInit() {
 	mutex = new(sync.Mutex)
-	conns = make(map[string]net.Conn)
+	conns = make(map[string]*PoolConn)
 	go ConnKeepAlive()
 }
 
-func ConnInit(upConn net.Conn) error {
-	if _, e := upConn.Write([]byte("S,SET PROTOCOL,6.2\r\n")); e != nil {
+func ConnInit(conn *PoolConn) error {
+	if _, e := conn.WriteLine([]byte("S,SET PROTOCOL,6.2")); e != nil {
 		return e
 	}
 
-	rUp := bufio.NewReader(upConn)
 	// S,CURRENT PROTOCOL,6.2
 	{
-		bin, e := rUp.ReadBytes(byte('\n'))
-		bin = bytes.TrimSpace(bin)
+		bin, e := conn.ReadLine()
 		if Verbose {
 			slog.Info("tcp_pool(ConnInit)", "stream", bin)
 		}
@@ -46,17 +67,15 @@ func ConnInit(upConn net.Conn) error {
 	return nil
 }
 
-func ConnTest(upConn net.Conn, origin string) error {
-	if _, e := upConn.Write([]byte("S,TEST\r\n")); e != nil {
+func ConnTest(conn *PoolConn, origin string) error {
+	if _, e := conn.WriteLine([]byte("S,TEST")); e != nil {
 		return e
 	}
 
-	rUp := bufio.NewReader(upConn)
 	// Iterate on conn until any 'old data' is flushed
 	flushed := 0
 	for i := 0; i < 10000; i++ {
-		bin, e := rUp.ReadBytes(byte('\n'))
-		bin = bytes.TrimSpace(bin)
+		bin, e := conn.ReadLine()
 		if Verbose {
 			slog.Info("tcp_pool(ConnTest)", "stream", bin)
 		}
@@ -72,7 +91,7 @@ func ConnTest(upConn net.Conn, origin string) error {
 			return nil
 		}
 
-		slog.Warn("tcp_pool(ConnTest) remaining data", "bin", bin)
+		slog.Warn("tcp_pool(ConnTest) remaining data", "bin", string(bin))
 		flushed++
 	}
 	return fmt.Errorf("ConnTest exhausted conn.read")
@@ -87,8 +106,7 @@ func ConnKeepAlive() {
 		}
 
 		for k, conn := range conns {
-			deadline := time.Now().Add(deadlineCmd)
-			if e := conn.SetDeadline(deadline); e != nil {
+			if e := conn.IncreaseDeadline(deadlineCmd); e != nil {
 				slog.Error("tcp_pool(ConnKeepAlive) SetDeadline", "e", e.Error())
 				delete(conns, k)
 				continue
@@ -108,36 +126,34 @@ func ConnKeepAlive() {
 	}
 }
 
-func readConnCache() (*net.Conn) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
+func readConnCache() *PoolConn {
 	if len(conns) == 0 {
 		return nil
 	}
+
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	// pick 'random' conn
 	for k, randomConn := range conns {
 		conn := randomConn
 		delete(conns, k)
-		return &conn
+		return conn
 	}
 
 	return nil
 }
 
-func GetConn() (net.Conn, error) {
+func GetConn() (*PoolConn, error) {
 	// 1. From pool
 	for {
-		cp := readConnCache()
-		if cp == nil {
+		conn := readConnCache()
+		if conn == nil {
 			// No connection avail, allow to create new conn
 			break
 		}
 
-		conn := *cp
-		deadline := time.Now().Add(deadlineStream)
-		if e := conn.SetDeadline(deadline); e != nil {
+		if e := conn.IncreaseDeadline(deadlineCmd); e != nil {
 			slog.Warn("tcp_pool(GetConn) setDeadline", "e", e)
 			continue
 		}
@@ -157,30 +173,31 @@ func GetConn() (net.Conn, error) {
 			return nil, e
 		}
 
-		deadline := time.Now().Add(deadlineStream)
-		if e := upConn.SetDeadline(deadline); e != nil {
+		conn := &PoolConn{C: upConn, R: bufio.NewReader(upConn)}
+		if e := conn.IncreaseDeadline(deadlineCmd); e != nil {
 			upConn.Close() // ignore any error
 			return nil, e
 		}
 
-		if e := ConnInit(upConn); e != nil {
+		if e := ConnInit(conn); e != nil {
 			upConn.Close() // ignore any error
 			return nil, e
 		}
 
-		return upConn, nil
+		return conn, nil
 	}
 }
 
-func FreeConn(n net.Conn) {
-	deadline := time.Now().Add(time.Second * 2)
-	if e := n.SetDeadline(deadline); e != nil {
+func FreeConn(n *PoolConn) {
+	if e := n.IncreaseDeadline(deadlineCmd); e != nil {
+		n.C.Close()
 		slog.Error("tcp_pool(FreeConn) setDeadline", "e", e.Error())
 		return
 	}
 
 	// Ensure the conn is good before we add it to the pool of conns
 	if e := ConnTest(n, "FreeConn"); e != nil {
+		n.C.Close()
 		slog.Error("tcp_pool(FreeConn) ConnTest", "e", e.Error())
 		return
 	}
