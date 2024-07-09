@@ -46,13 +46,15 @@ func ConnInit(upConn net.Conn) error {
 	return nil
 }
 
-func ConnTest(upConn net.Conn) error {
+func ConnTest(upConn net.Conn, origin string) error {
 	if _, e := upConn.Write([]byte("S,TEST\r\n")); e != nil {
 		return e
 	}
 
 	rUp := bufio.NewReader(upConn)
-	{
+	// Iterate on conn until any 'old data' is flushed
+	flushed := 0
+	for i := 0; i < 10000; i++ {
 		bin, e := rUp.ReadBytes(byte('\n'))
 		bin = bytes.TrimSpace(bin)
 		if Verbose {
@@ -61,12 +63,19 @@ func ConnTest(upConn net.Conn) error {
 		if e != nil {
 			return e
 		}
-		if !bytes.Equal(bin, []byte("E,!SYNTAX_ERROR!,")) {
-			return fmt.Errorf("[upConn Equal] invalid res=%s\n", bin)
-		}
-	}
+		if bytes.Equal(bin, []byte("E,!SYNTAX_ERROR!,")) {
+			if flushed > 0 {
+				slog.Warn("tcp_pool(ConnTest) remaining data", "origin", origin, "n", flushed)
+			}
 
-	return nil
+			// reached end of data
+			return nil
+		}
+
+		slog.Warn("tcp_pool(ConnTest) remaining data", "bin", bin)
+		flushed++
+	}
+	return fmt.Errorf("ConnTest exhausted conn.read")
 }
 
 func ConnKeepAlive() {
@@ -78,14 +87,14 @@ func ConnKeepAlive() {
 		}
 
 		for k, conn := range conns {
-			deadline := time.Now().Add(time.Second * 2)
+			deadline := time.Now().Add(deadlineCmd)
 			if e := conn.SetDeadline(deadline); e != nil {
 				slog.Error("tcp_pool(ConnKeepAlive) SetDeadline", "e", e.Error())
 				delete(conns, k)
 				continue
 			}
 
-			if e := ConnTest(conn); e != nil {
+			if e := ConnTest(conn, "ConnKeepAlive"); e != nil {
 				slog.Error("tcp_pool(ConnKeepAlive) ConnTest", "e", e.Error())
 				delete(conns, k)
 				continue
@@ -99,56 +108,79 @@ func ConnKeepAlive() {
 	}
 }
 
-func GetConn() (net.Conn, error) {
-	var conn net.Conn
-
+func readConnCache() (*net.Conn) {
 	mutex.Lock()
-	// random conn trick
-	for k, randomConn := range conns {
-		conn = randomConn
-		delete(conns, k)
-		mutex.Unlock()
+	defer mutex.Unlock()
 
-		deadline := time.Now().Add(deadlineStream)
-		if e := conn.SetDeadline(deadline); e != nil {
-			return nil, e
+	if len(conns) == 0 {
+		return nil
+	}
+
+	// pick 'random' conn
+	for k, randomConn := range conns {
+		conn := randomConn
+		delete(conns, k)
+		return &conn
+	}
+
+	return nil
+}
+
+func GetConn() (net.Conn, error) {
+	// 1. From pool
+	for {
+		cp := readConnCache()
+		if cp == nil {
+			// No connection avail, allow to create new conn
+			break
 		}
 
-		// Ensure the conn is good
-		if e := ConnTest(conn); e != nil {
-			slog.Error("tcp_pool(GetConn) ConnTest", "e", e.Error())
-			delete(conns, k)
+		conn := *cp
+		deadline := time.Now().Add(deadlineStream)
+		if e := conn.SetDeadline(deadline); e != nil {
+			slog.Warn("tcp_pool(GetConn) setDeadline", "e", e)
 			continue
 		}
 
+		// Ensure the conn is good
+		if e := ConnTest(conn, "GetConn"); e != nil {
+			slog.Warn("tcp_pool(GetConn) ConnTest", "e", e)
+			continue
+		}
 		return conn, nil
 	}
-	mutex.Unlock()
 
-	upConn, e := net.DialTimeout("tcp", "127.0.0.1:9100", defaultConnectTimeout)
-	if e != nil {
-		return nil, e
-	}
-	if e := ConnInit(upConn); e != nil {
-		return nil, e
-	}
+	// 2. new conn
+	{
+		upConn, e := net.DialTimeout("tcp", "127.0.0.1:9100", defaultConnectTimeout)
+		if e != nil {
+			return nil, e
+		}
 
-	deadline := time.Now().Add(deadlineStream)
-	if e := upConn.SetDeadline(deadline); e != nil {
-		return nil, e
-	}
-	// Ensure the conn is good
-	if e := ConnTest(conn); e != nil {
-		upConn.Close() // ignore any error
-		return nil, e
-	}
+		deadline := time.Now().Add(deadlineStream)
+		if e := upConn.SetDeadline(deadline); e != nil {
+			upConn.Close() // ignore any error
+			return nil, e
+		}
 
-	return upConn, nil
+		if e := ConnInit(upConn); e != nil {
+			upConn.Close() // ignore any error
+			return nil, e
+		}
+
+		return upConn, nil
+	}
 }
 
 func FreeConn(n net.Conn) {
-	// Ensure the conn is good before we offer it again
-	if e := ConnTest(n); e != nil {
+	deadline := time.Now().Add(time.Second * 2)
+	if e := n.SetDeadline(deadline); e != nil {
+		slog.Error("tcp_pool(FreeConn) setDeadline", "e", e.Error())
+		return
+	}
+
+	// Ensure the conn is good before we add it to the pool of conns
+	if e := ConnTest(n, "FreeConn"); e != nil {
 		slog.Error("tcp_pool(FreeConn) ConnTest", "e", e.Error())
 		return
 	}
