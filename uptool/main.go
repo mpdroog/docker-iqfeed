@@ -57,7 +57,7 @@ func main() {
 			"-login", login,
 			"-password", pass,
 			"-autoconnect",
-		}, PostCmd: "mv", PostArgs: []string{"/home/wine/DTN/IQFeed/IQConnectLog.txt", "/home/wine/DTN/IQFeed/IQConnectLog.txt.1"}},
+		}, PostCmd: "mv", PostArgs: []string{"/home/wine/.wine/drive_c/users/wine/Documents/DTN/IQFeed/IQConnectLog.txt", "/home/wine/IQConnectLog.crash.txt"}},
 	}
 	if Verbose {
 		slog.Info("main[exec]", "cmds", cmds)
