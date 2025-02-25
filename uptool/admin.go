@@ -1,11 +1,11 @@
 package main
 
 import (
-	"os"
 	"bufio"
 	"bytes"
 	"log/slog"
 	"net"
+	"os"
 	"time"
 )
 
@@ -26,7 +26,7 @@ func killProcess(name string) error {
 		return e
 	}
 	//if Verbose {
-		slog.Info("admin[readlineT] kill iqfeed", "pid", pid)
+	slog.Info("admin[readlineT] kill iqfeed", "pid", pid)
 	//}\
 	return nil
 }

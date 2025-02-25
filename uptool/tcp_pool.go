@@ -12,9 +12,9 @@ import (
 
 // PoolConn is a connection with administration for re-using connections and keeping iqfeed work longer.
 type PoolConn struct {
-	C net.Conn       // Connection
-	R *bufio.Reader  // Buffer
-	ReUse int        // Reuse counter
+	C     net.Conn      // Connection
+	R     *bufio.Reader // Buffer
+	ReUse int           // Reuse counter
 }
 
 func (p *PoolConn) ReadLine() ([]byte, error) {
