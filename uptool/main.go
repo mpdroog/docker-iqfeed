@@ -21,6 +21,7 @@ func main() {
 
 	Running = new(sync.Map)
 	flag.BoolVar(&Verbose, "v", false, "Show all that happens")
+	flag.Parse()
 
 	prod := os.Getenv("PROD")
 	if prod == "" {
