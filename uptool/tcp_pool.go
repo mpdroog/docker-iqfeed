@@ -10,9 +10,11 @@ import (
 	"time"
 )
 
+// PoolConn is a connection with administration for re-using connections and keeping iqfeed work longer.
 type PoolConn struct {
-	C net.Conn
-	R *bufio.Reader
+	C net.Conn       // Connection
+	R *bufio.Reader  // Buffer
+	ReUse int        // Reuse counter
 }
 
 func (p *PoolConn) ReadLine() ([]byte, error) {
@@ -39,13 +41,15 @@ var (
 	mutex   *sync.Mutex
 )
 
+// Init for keepalive of conns
 func ConnKeepAliveInit() {
 	mutex = new(sync.Mutex)
 	conns = make(map[string]*PoolConn)
 	go ConnKeepAlive()
 }
 
-func ConnInit(conn *PoolConn) error {
+// ConnInit checks if conn is ready for processing
+func connInit(conn *PoolConn) error {
 	if _, e := conn.WriteLine([]byte("S,SET PROTOCOL,6.2")); e != nil {
 		return e
 	}
@@ -67,6 +71,7 @@ func ConnInit(conn *PoolConn) error {
 	return nil
 }
 
+// ConnTest checks if the conn can be used (and flushes the buffer if old data in there)
 func ConnTest(conn *PoolConn, origin string) error {
 	if _, e := conn.WriteLine([]byte("S,TEST")); e != nil {
 		return e
@@ -93,12 +98,12 @@ func ConnTest(conn *PoolConn, origin string) error {
 			return nil
 		}
 
-		slog.Warn("tcp_pool(ConnTest) too much data", "bin", string(bin))
 		flushed++
 	}
 	return fmt.Errorf("ConnTest exhausted conn.read")
 }
 
+// ConnKeepAlive is a blocking func to keep 'cached' conns alive.
 func ConnKeepAlive() {
 	for {
 		time.Sleep(40 * time.Second)
@@ -128,6 +133,7 @@ func ConnKeepAlive() {
 	}
 }
 
+// readConnCache returns a random conn
 func readConnCache() *PoolConn {
 	if len(conns) == 0 {
 		return nil
@@ -146,6 +152,7 @@ func readConnCache() *PoolConn {
 	return nil
 }
 
+// GetConn returns a connection for using.
 func GetConn() (*PoolConn, error) {
 	// 1. From pool
 	for {
@@ -181,7 +188,7 @@ func GetConn() (*PoolConn, error) {
 			return nil, e
 		}
 
-		if e := ConnInit(conn); e != nil {
+		if e := connInit(conn); e != nil {
 			upConn.Close() // ignore any error
 			return nil, e
 		}
@@ -190,7 +197,9 @@ func GetConn() (*PoolConn, error) {
 	}
 }
 
+// FreeConn adds the conn back into the pool
 func FreeConn(n *PoolConn) {
+	n.ReUse++
 	if e := n.IncreaseDeadline(deadlineCmd); e != nil {
 		n.C.Close()
 		slog.Error("tcp_pool(FreeConn) setDeadline", "e", e.Error())
@@ -204,8 +213,23 @@ func FreeConn(n *PoolConn) {
 		return
 	}
 
+	if n.ReUse > 2000 {
+		slog.Info("tcp_pool(FreeConn) Reuse over 2000, dropping conn")
+		if _, e := n.WriteLine([]byte("QUIT")); e != nil {
+			slog.Error("tcp_pool(FreeConn) QUIT", "e", e.Error())
+		}
+		if e := n.C.Close(); e != nil {
+			slog.Error("tcp_pool(FreeConn) Close", "e", e.Error())
+		}
+		return
+	}
+
 	mutex.Lock()
 	counter++
-	conns[fmt.Sprintf("%d", counter)] = n
+	uniqid := fmt.Sprintf("%d", counter)
+	if _, inuse := conns[uniqid]; inuse {
+		panic(fmt.Sprintf("Broken assumption: counter already set=%s", uniqid))
+	}
+	conns[uniqid] = n
 	mutex.Unlock()
 }

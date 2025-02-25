@@ -71,7 +71,7 @@ func main() {
 	if reap.IsSupported() {
 		go reap.ReapChildren(nil, nil, nil, nil)
 	} else {
-		slog.Warn("main[reap]", "go-reap isn't supported on your platform")
+		slog.Warn("main[reap] go-reap isn't supported on your platform")
 	}
 
 	var wg sync.WaitGroup

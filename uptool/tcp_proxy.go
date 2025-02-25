@@ -117,7 +117,7 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		if bytes.Equal(bin, []byte(EOM)) {
 			// Done!
 			if Verbose {
-				slog.Info("tcp_proxy(proxy)", "End of stream")
+				slog.Info("tcp_proxy(proxy) End of stream")
 			}
 			break
 		}
