@@ -57,9 +57,9 @@ func run(name, path string, flags []string) error {
 
 	if run {
 		// Save state
-		Running.Store(name, struct{}{})
+		Running.Store(name, cmd.Process.Pid)
 		if Verbose {
-			slog.Info("exec[run] running", "name", name)
+			slog.Info("exec[run] running", "name", name, "pid", cmd.Process.Pid)
 		}
 	}
 
@@ -98,9 +98,7 @@ func ensureRunning(wg *sync.WaitGroup, cmds map[string]CmdInfo) {
 					}
 				}
 				e := run(name, info.Cmd, info.Args)
-				if e != nil {
-					slog.Error("exec[ensureRunning] process.Stop", "name", name, "e", e.Error())
-				}
+				slog.Error("exec[ensureRunning] process.Stop", "name", name, "e", e.Error())
 
 				if len(info.PostCmd) > 0 {
 					// Run something after the process stopped

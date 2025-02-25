@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"bufio"
 	"bytes"
 	"log/slog"
@@ -8,10 +9,33 @@ import (
 	"time"
 )
 
+func killProcess(name string) error {
+	v, ok := Running.Load("iqfeed")
+	if !ok {
+		// nothing to kill, not running probably
+		return nil
+	}
+
+	// Kill instance
+	pid := v.(int)
+	p, e := os.FindProcess(pid)
+	if e != nil {
+		return e
+	}
+	if e := p.Kill(); e != nil {
+		return e
+	}
+	//if Verbose {
+		slog.Info("admin[readlineT] kill iqfeed", "pid", pid)
+	//}\
+	return nil
+}
+
 /** admin is the go-routine that monitors if the upstream
  * connection is Connected and else sends a Connect */
 func admin() {
 	init := true
+	failCounter := 0
 	dur, e := time.ParseDuration("10s")
 	if e != nil {
 		slog.Error("admin[keepAlive parseDuration]", "e", e.Error())
@@ -71,6 +95,13 @@ func admin() {
 			if e != nil {
 				conn.Close() // TODO: err?
 				slog.Error("admin[readlineT]", "e", e.Error())
+
+				failCounter++
+				if failCounter == 5 {
+					if e := killProcess("iqfeed"); e != nil {
+						slog.Error("admin[killProcess]", "e", e.Error())
+					}
+				}
 				continue
 			}
 			if Verbose {
@@ -78,6 +109,7 @@ func admin() {
 			}
 		}
 
+		failCounter = 0 // reset counter
 		for {
 			deadline := time.Now().Add(dur)
 			if e := conn.SetDeadline(deadline); e != nil {
