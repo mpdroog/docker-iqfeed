@@ -31,93 +31,100 @@ func killProcess(name string) error {
 	return nil
 }
 
+func initConn(dur time.Duration) (*PoolConn, error) {
+	// is running?
+	{
+		_, ok := Running.Load("iqfeed")
+		if !ok {
+			return nil, nil
+		}
+		if Verbose {
+			slog.Info("iqfeed-dep available")
+		}
+	}
+
+	// test conn
+	if Verbose {
+		slog.Info("admin[connect]")
+	}
+	// Keep alive conn
+	conn, e := net.DialTimeout("tcp", "127.0.0.1:9300", defaultConnectTimeout)
+	if e != nil {
+		return nil, e
+	}
+
+	r := bufio.NewReader(conn)
+
+	// Check if conn working
+	{
+		deadline := time.Now().Add(dur)
+		if e := conn.SetDeadline(deadline); e != nil {
+			conn.Close()
+			return nil, e
+		}
+
+		if _, e := conn.Write([]byte("T\r\n")); e != nil {
+			conn.Close() // TODO: err?
+			return nil, e
+		}
+		line, _, e := r.ReadLine()
+		if e != nil {
+			conn.Close() // TODO: err?
+			return nil, e
+		}
+
+		if Verbose {
+			slog.Info("admin[readlineT]", "line", line)
+		}
+	}
+
+	return &PoolConn{
+		C: conn, R: r,
+	}, nil
+}
+
 /** admin is the go-routine that monitors if the upstream
  * connection is Connected and else sends a Connect */
 func admin() {
-	init := true
-	failCounter := 0
 	dur, e := time.ParseDuration("10s")
 	if e != nil {
 		slog.Error("admin[keepAlive parseDuration]", "e", e.Error())
 		panic("DevErr")
 	}
 
+	failCounter := 0
 	for {
-		if init == false {
-			// Always sleep after first try
-			time.Sleep(time.Second * 1)
-		}
-		init = false
+		// Always delay 1sec so we don't flood the admin-conn and prevent kill frenzies
+		time.Sleep(time.Second * 1)
 
-		// wait for running
-		for {
-			name := "iqfeed"
-			if _, ok := Running.Load(name); ok == true {
-				// Service avail
-				if Verbose {
-					slog.Info("admin dep available", "name", name)
-				}
-				break
-			}
-			if Verbose {
-				slog.Info("admin[await]", "name", name)
-			}
-			time.Sleep(time.Millisecond * 250)
-		}
-
-		if Verbose {
-			slog.Info("admin[connect]")
-		}
-		// Keep alive conn
-		conn, e := net.DialTimeout("tcp", "127.0.0.1:9300", defaultConnectTimeout)
+		pconn, e := initConn(dur)
 		if e != nil {
-			slog.Info("admin[Dial]", "e", e.Error())
+			slog.Info("admin[initConn]", "e", e.Error())
+
+			failCounter++
+			if failCounter == 10 {
+				// Failed 10 times (for 10sec)
+				if e := killProcess("iqfeed"); e != nil {
+					slog.Error("admin[killProcess]", "e", e.Error())
+				}
+			}
+			continue
+		}
+		if pconn == nil {
+			// TODO: Also include in error handler for kill?
+			slog.Info("admin[initConn] conn not yet ready")
 			continue
 		}
 
-		c := bufio.NewReader(conn)
-
-		// Check if conn working
-		{
-			deadline := time.Now().Add(dur)
-			if e := conn.SetDeadline(deadline); e != nil {
-				conn.Close()
-				slog.Error("admin[setDeadline]", "e", e.Error())
-				continue
-			}
-
-			if _, e := conn.Write([]byte("T\r\n")); e != nil {
-				conn.Close() // TODO: err?
-				slog.Error("admin[writeT]", "e", e.Error())
-				continue
-			}
-			line, _, e := c.ReadLine()
-			if e != nil {
-				conn.Close() // TODO: err?
-				slog.Error("admin[readlineT]", "e", e.Error())
-
-				failCounter++
-				if failCounter == 5 {
-					if e := killProcess("iqfeed"); e != nil {
-						slog.Error("admin[killProcess]", "e", e.Error())
-					}
-				}
-				continue
-			}
-			if Verbose {
-				slog.Info("admin[readlineT]", "line", line)
-			}
-		}
-
-		failCounter = 0 // reset counter
+		// reset counter
+		failCounter = 0
 		for {
-			deadline := time.Now().Add(dur)
-			if e := conn.SetDeadline(deadline); e != nil {
+			if e := pconn.IncreaseDeadline(dur); e != nil {
 				slog.Error("admin[for.setDeadline]", "e", e.Error())
 				break
 			}
 
-			bin, _, e := c.ReadLine()
+			bin, e := pconn.ReadLine()
 			bin = bytes.TrimSpace(bin)
 			if e != nil {
 				slog.Error("admin[readLine]", "e", e.Error())
@@ -139,7 +146,7 @@ func admin() {
 		}
 		Running.Delete("admin")
 
-		if e := conn.Close(); e != nil {
+		if e := pconn.C.Close(); e != nil {
 			slog.Error("admin[close]", "e", e.Error())
 		}
 	}
