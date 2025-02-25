@@ -84,7 +84,7 @@ func main() {
 	// Admin monitoring
 	go admin()
 	// Client that keeps everything open
-	go keepalive("127.0.0.1:5009")
+	//go keepalive("127.0.0.1:5009")
 	// HTTP-server
 	go httpListen(":8080")
 
