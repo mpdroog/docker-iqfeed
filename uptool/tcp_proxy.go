@@ -22,7 +22,7 @@ const EOM = "!ENDMSG!,"
 var streamReplies map[string]struct{}
 
 /* deadlineCmd is the time a reply for a simple req>reply gets */
-var deadlineCmd = 5 * time.Second
+var deadlineCmd = 17 * time.Second
 
 /* deadlineStream is the time a reply for a bigger reply gets */
 // var deadlineStream = 15 * time.Second
@@ -101,7 +101,7 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 			slog.Info("tcp_proxy(proxy)", "stream", bin)
 		}
 		if e != nil {
-			return e
+			return fmt.Errorf("ReadLine e=%s", e.Error())
 		}
 
 		if tok := isError(bin); len(tok) > 0 {
