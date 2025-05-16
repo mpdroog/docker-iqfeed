@@ -307,7 +307,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if dp+100 > MaxDatapoints {
+	if dp+1 > MaxDatapoints {
 		if e := writer.Err(w, r, 400, writer.ErrorRes{Error: "MAX_DATAPOINTS", Detail: fmt.Sprintf("rejecting more than %d datapoints, please set mode=chunked", MaxDatapoints)}); e != nil {
 			slog.Error("HTTP[data] WriteMaxDatapoints", "e", e.Error())
 		}
@@ -317,7 +317,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 	// Parse lines
 	out := make([]OHLC, 0, dp)
 	i := 0
-	if e := proxy(cmd, dp+100, func(bin []byte) error {
+	if e := proxy(cmd, dp+1, func(bin []byte) error {
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 7 {
 			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
