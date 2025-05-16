@@ -72,6 +72,7 @@ func connInit(conn *PoolConn) error {
 }
 
 // ConnTest checks if the conn can be used (and flushes the buffer if old data in there)
+// TODO: Move func to method so we can call this on the conn itself for other uses like admin
 func ConnTest(conn *PoolConn, origin string) error {
 	if _, e := conn.WriteLine([]byte("S,TEST")); e != nil {
 		return e
@@ -213,8 +214,8 @@ func FreeConn(n *PoolConn) {
 		return
 	}
 
-	if n.ReUse > 2000 {
-		slog.Info("tcp_pool(FreeConn) Reuse over 2000, dropping conn")
+	if n.ReUse > 20.000 {
+		slog.Info("tcp_pool(FreeConn) Reuse over 20.000, dropping conn")
 		if _, e := n.WriteLine([]byte("QUIT")); e != nil {
 			slog.Error("tcp_pool(FreeConn) QUIT", "e", e.Error())
 		}
