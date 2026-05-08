@@ -39,7 +39,9 @@ func (p *PrettyJSONEncoder) Encode(data interface{}) error {
 			p.first = false
 			p.w.Header().Set("Content-Type", "application/stream+json")
 		}
-		p.w.Write(s)
+		if _, e := p.w.Write(s); e != nil {
+			return e
+		}
 		return nil
 	}
 
@@ -52,8 +54,12 @@ func (p *PrettyJSONEncoder) Encode(data interface{}) error {
 		p.first = false
 		p.w.Header().Set("Content-Type", "application/stream+json")
 	}
-	p.w.Write(s)
-	p.w.Write([]byte("\r\n"))
+	if _, e := p.w.Write(s); e != nil {
+		return e
+	}
+	if _, e := p.w.Write([]byte("\r\n")); e != nil {
+		return e
+	}
 	return nil
 }
 
@@ -97,7 +103,9 @@ func Encode(w http.ResponseWriter, r *http.Request, httpCode int, data interface
 		w.Header().Set("Content-Type", "application/x-msgpack")
 		w.WriteHeader(httpCode)
 
-		w.Write(s)
+		if _, e := w.Write(s); e != nil {
+			return e
+		}
 		return nil
 	}
 	// TODO: Some CSV writer?
@@ -113,7 +121,9 @@ func Encode(w http.ResponseWriter, r *http.Request, httpCode int, data interface
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(httpCode)
 
-		w.Write(s)
+		if _, e := w.Write(s); e != nil {
+			return e
+		}
 		return nil
 	}
 
@@ -125,8 +135,12 @@ func Encode(w http.ResponseWriter, r *http.Request, httpCode int, data interface
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(httpCode)
 
-	w.Write(s)
-	w.Write([]byte("\r\n"))
+	if _, e := w.Write(s); e != nil {
+		return e
+	}
+	if _, e := w.Write([]byte("\r\n")); e != nil {
+		return e
+	}
 	return nil
 }
 

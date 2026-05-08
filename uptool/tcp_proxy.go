@@ -108,8 +108,8 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 			if Verbose {
 				slog.Info("tcp_proxy(proxy) isError", "stream", bin, "tok", tok)
 			}
-			if len(tok) == 0 {
-				return fmt.Errorf("%s", tok)
+			if len(tok) < 2 {
+				return fmt.Errorf("%s", bin)
 			}
 			return fmt.Errorf("%s", tok[1])
 		}

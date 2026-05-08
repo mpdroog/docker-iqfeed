@@ -17,12 +17,15 @@ $conn = @fsockopen("127.0.0.1", 9100, $errno, $errstr, 2);
         err("CRITICAL - stream_socket_client fail: $errno $errstr");
   }
   if (stream_set_timeout($conn, 30) === false) {
+        fclose($conn);
         err("UNKNOWN - stream_set_timeout fail");
   }
-  $res = stream_get_line($conn, 256, "\r\n");
+  // write?
+  /*$res = stream_get_line($conn, 256, "\r\n");
   if ($res !== "READY") {
         err("UNKNOWN - set protocol failed, res=$res");
-  }
+  }*/
+  fclose($conn);
 }
 
 if (VERBOSE) echo "OK\n";

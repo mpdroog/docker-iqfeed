@@ -66,7 +66,7 @@ func run(name, path string, flags []string) error {
 	wg.Wait()
 	Running.Delete(name)
 
-	if e == nil && cmd.ProcessState.ExitCode() != 0 {
+	if e == nil && cmd.ProcessState != nil && cmd.ProcessState.ExitCode() != 0 {
 		e = fmt.Errorf("[%s] exited with exit=%d", name, cmd.ProcessState.ExitCode())
 	}
 
@@ -98,7 +98,11 @@ func ensureRunning(wg *sync.WaitGroup, cmds map[string]CmdInfo) {
 					}
 				}
 				e := run(name, info.Cmd, info.Args)
-				slog.Error("exec[ensureRunning] process.Stop", "name", name, "e", e.Error())
+				if e != nil {
+					slog.Error("exec[ensureRunning] process.Stop", "name", name, "e", e.Error())
+				} else {
+					slog.Info("exec[ensureRunning] process.Stop", "name", name)
+				}
 
 				if len(info.PostCmd) > 0 {
 					// Run something after the process stopped

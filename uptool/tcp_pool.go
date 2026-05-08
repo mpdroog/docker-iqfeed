@@ -15,6 +15,7 @@ type PoolConn struct {
 	C     net.Conn      // Connection
 	R     *bufio.Reader // Buffer
 	ReUse int           // Reuse counter
+	// TODO: ConnCreated so we don't close conns active shorter than 8hours?
 }
 
 func (p *PoolConn) ReadLine() ([]byte, error) {
@@ -113,16 +114,21 @@ func ConnKeepAlive() {
 			slog.Info("tcp_pool(ConnKeepAlive) start")
 		}
 
+		// Collect connections to close outside the lock
+		var toClose []*PoolConn
+
 		for k, conn := range conns {
 			if e := conn.IncreaseDeadline(deadlineCmd); e != nil {
 				slog.Error("tcp_pool(ConnKeepAlive) SetDeadline", "e", e.Error())
 				delete(conns, k)
+				toClose = append(toClose, conn)
 				continue
 			}
 
 			if e := ConnTest(conn, "ConnKeepAlive"); e != nil {
 				slog.Error("tcp_pool(ConnKeepAlive) ConnTest", "e", e.Error())
 				delete(conns, k)
+				toClose = append(toClose, conn)
 				continue
 			}
 		}
@@ -131,17 +137,28 @@ func ConnKeepAlive() {
 			slog.Info("tcp_pool(ConnKeepAlive) finish")
 		}
 		mutex.Unlock()
+
+		// Close connections outside the lock to avoid potential deadlocks
+		for _, conn := range toClose {
+			if e := conn.C.Close(); e != nil {
+				slog.Warn("tcp_pool(ConnKeepAlive) Close", "e", e.Error())
+			}
+		}
 	}
 }
 
 // readConnCache returns a random conn
 func readConnCache() *PoolConn {
-	if len(conns) == 0 {
+	if mutex == nil || conns == nil {
 		return nil
 	}
 
 	mutex.Lock()
 	defer mutex.Unlock()
+
+	if len(conns) == 0 {
+		return nil
+	}
 
 	// pick 'random' conn
 	for k, randomConn := range conns {
@@ -165,12 +182,18 @@ func GetConn() (*PoolConn, error) {
 
 		if e := conn.IncreaseDeadline(deadlineCmd); e != nil {
 			slog.Warn("tcp_pool(GetConn) setDeadline", "e", e)
+			if ce := conn.C.Close(); ce != nil {
+				slog.Warn("tcp_pool(GetConn) close after setDeadline", "e", ce)
+			}
 			continue
 		}
 
 		// Ensure the conn is good
 		if e := ConnTest(conn, "GetConn"); e != nil {
 			slog.Warn("tcp_pool(GetConn) ConnTest", "e", e)
+			if ce := conn.C.Close(); ce != nil {
+				slog.Warn("tcp_pool(GetConn) close after ConnTest", "e", ce)
+			}
 			continue
 		}
 		return conn, nil
@@ -200,6 +223,14 @@ func GetConn() (*PoolConn, error) {
 
 // FreeConn adds the conn back into the pool
 func FreeConn(n *PoolConn) {
+	// If pool not initialized, just close the connection
+	if mutex == nil || conns == nil {
+		if e := n.C.Close(); e != nil {
+			slog.Warn("tcp_pool(FreeConn) Close (pool not initialized)", "e", e.Error())
+		}
+		return
+	}
+
 	n.ReUse++
 	if e := n.IncreaseDeadline(deadlineCmd); e != nil {
 		n.C.Close()
@@ -214,8 +245,8 @@ func FreeConn(n *PoolConn) {
 		return
 	}
 
-	if n.ReUse > 20.000 {
-		slog.Info("tcp_pool(FreeConn) Reuse over 20.000, dropping conn")
+	if n.ReUse > 20_000 {
+		slog.Info("tcp_pool(FreeConn) Reuse over 20000, dropping conn")
 		if _, e := n.WriteLine([]byte("QUIT")); e != nil {
 			slog.Error("tcp_pool(FreeConn) QUIT", "e", e.Error())
 		}
@@ -229,7 +260,11 @@ func FreeConn(n *PoolConn) {
 	counter++
 	uniqid := fmt.Sprintf("%d", counter)
 	if _, inuse := conns[uniqid]; inuse {
-		panic(fmt.Sprintf("Broken assumption: counter already set=%s", uniqid))
+		// Should never happen, but log and close instead of panicking
+		slog.Error("tcp_pool(FreeConn) counter collision, closing conn", "uniqid", uniqid)
+		mutex.Unlock()
+		n.C.Close()
+		return
 	}
 	conns[uniqid] = n
 	mutex.Unlock()

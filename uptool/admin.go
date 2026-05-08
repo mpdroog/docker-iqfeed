@@ -17,7 +17,11 @@ func killProcess(name string) error {
 	}
 
 	// Kill instance
-	pid := v.(int)
+	pid, ok := v.(int)
+	if !ok {
+		slog.Error("admin[killProcess] unexpected type for pid", "value", v)
+		return nil
+	}
 	p, e := os.FindProcess(pid)
 	if e != nil {
 		return e
@@ -137,6 +141,10 @@ func admin() {
 			// S,STATS,,,0,0,1,0,0,0,,,Not Connected,6.2.0.25,\"490914\",0,0.0,0.0,0.08,0.08,0.08,
 			if bytes.HasPrefix(bin, []byte("S,STATS")) {
 				tok := bytes.SplitN(bin, []byte(","), 16)
+				if len(tok) < 13 {
+					slog.Warn("admin[readLine] S,STATS unexpected format", "tok_len", len(tok), "bin", string(bin))
+					continue
+				}
 				if bytes.Equal(tok[12], []byte("Not Connected")) {
 					Running.Delete("admin")
 				} else if bytes.Equal(tok[12], []byte("Connected")) {

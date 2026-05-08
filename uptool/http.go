@@ -48,7 +48,11 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 
 	// buffer 1MB
 	ww := bufio.NewWriterSize(w, 1024*1024)
-	defer ww.Flush()
+	defer func() {
+		if e := ww.Flush(); e != nil {
+			slog.Error("HTTP[chunkedStream] Flush", "e", e.Error())
+		}
+	}()
 
 	i := 0
 	if e := proxy(cmd, -1, func(bin []byte) error {
