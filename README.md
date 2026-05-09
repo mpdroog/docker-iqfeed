@@ -33,7 +33,7 @@ cd -
 # Build the container
 docker build --tag 'mpdroog/docker-iqfeed:latest' -f Dockerfile .
 # Run it
-docker run -p 9100:9101 -p 8080:8080 -p 5009:5009 -p 9200:9200 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env mpdroog/docker-iqfeed
+docker run -p 9100:9101 -p 8080:8080 -p 5009:5010 -p 9200:9201 --cap-drop ALL --security-opt no-new-privileges --memory=1g --cpus=1 --rm --env-file iqfeed.env mpdroog/docker-iqfeed
 ```
 
 Ports
@@ -42,10 +42,11 @@ This daemon offers the 'classic' TCP connection (9100) and HTTP-REST (8080) for 
 Additionally, Level 1 (streaming quotes) and Level 2 (market depth) are available as TCP proxies.
 
 ```
-LookupPort 9100 - Historical Data, Symbol Lookup, News Lookup, and Chains Lookup information
-HTTP 8080 - Historical Data, Symbol Lookup
-Level1 5009 - Streaming Level 1 quotes (watch symbols, get real-time updates)
-Level2 9200 - Market Depth (order book, price levels)
+External -> Internal
+9100 -> 9101  LookupPort - Historical Data, Symbol Lookup, News Lookup, and Chains Lookup
+8080 -> 8080  HTTP - Historical Data, Symbol Lookup
+5009 -> 5010  Level1 - Streaming Level 1 quotes (watch symbols, get real-time updates)
+9200 -> 9201  Level2 - Market Depth (order book, price levels)
 ```
 
 HTTP example

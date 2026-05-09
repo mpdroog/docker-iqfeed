@@ -87,10 +87,10 @@ func main() {
 	//go keepalive("127.0.0.1:5009")
 	// HTTP-server
 	go httpListen(":8080")
-	// Level 1 streaming quotes
-	go startStreamServer(":5009", level1Proxy, "Level1")
-	// Level 2 market depth
-	go startStreamServer(":9200", level2Proxy, "Level2")
+	// Level 1 streaming quotes (external :5010 -> IQFeed internal :5009)
+	go startStreamServer(":5010", level1Proxy, "Level1")
+	// Level 2 market depth (external :9201 -> IQFeed internal :9200)
+	go startStreamServer(":9201", level2Proxy, "Level2")
 
 	// TCP-server
 	{
