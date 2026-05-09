@@ -7,7 +7,9 @@ RUN adduser -D wine
 ENV HOME /home/wine
 WORKDIR /home/wine
 
+ENV WINEARCH win64
 ENV WINEPREFIX /home/wine/.wine
+ENV WINEDLLOVERRIDES="mscoree,mshtml="
 ENV DISPLAY :0
 
 # iqfeed config
@@ -19,17 +21,22 @@ ENV IQFEED_LOG_LEVEL 54064
 # Hide all warning
 ENV WINEDEBUG -all
 
-RUN apk --no-cache add wine xvfb xvfb-run && wget http://winetricks.org/winetricks && chmod +x winetricks && mv winetricks /usr/bin/winetricks
+RUN apk --no-cache add wine xvfb xvfb-run
 
 USER wine
 # Init wine instance
-RUN winecfg && wineserver --wait
+RUN wineboot --init && wineserver --wait
 # Download iqfeed client
 #RUN wget -nv http://www.iqfeed.net/$IQFEED_INSTALLER_BIN -O /home/wine/$IQFEED_INSTALLER_BIN
 ADD cache/$IQFEED_INSTALLER_BIN /home/wine/$IQFEED_INSTALLER_BIN
 
 # Install iqfeed client, set loglevel and redirect IQConnectlog to stderr
-RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && wineserver --wait && wine64 reg add HKEY_CURRENT_USER\\\Software\\\DTN\\\IQFeed\\\Startup /t REG_DWORD /v LogLevel /d $IQFEED_LOG_LEVEL /f && wineserver --wait && rm /home/wine/$IQFEED_INSTALLER_BIN && ln -sf /dev/stderr /home/wine/.wine/drive_c/users/wine/Documents/DTN/IQFeed/IQConnectLog.txt
+RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && wineserver --wait \
+    && wine64 reg add HKEY_CURRENT_USER\\\Software\\\DTN\\\IQFeed\\\Startup /t REG_DWORD /v LogLevel /d $IQFEED_LOG_LEVEL /f && wineserver --wait \
+    && rm /home/wine/$IQFEED_INSTALLER_BIN \
+    && ln -sf /dev/stderr /home/wine/.wine/drive_c/users/wine/Documents/DTN/IQFeed/IQConnectLog.txt \
+    && rm -rf /home/wine/.wine/drive_c/windows/Installer/* \
+    && rm -rf /home/wine/.wine/drive_c/users/wine/Temp/*
 ADD uptool/iqapi /home/wine/iq-api
 
 # Correct X-perm warn
