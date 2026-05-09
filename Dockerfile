@@ -36,7 +36,9 @@ RUN xvfb-run -s -noreset -a wine64 /home/wine/$IQFEED_INSTALLER_BIN /S && winese
     && rm /home/wine/$IQFEED_INSTALLER_BIN \
     && ln -sf /dev/stderr /home/wine/.wine/drive_c/users/wine/Documents/DTN/IQFeed/IQConnectLog.txt \
     && rm -rf /home/wine/.wine/drive_c/windows/Installer/* \
-    && rm -rf /home/wine/.wine/drive_c/users/wine/Temp/*
+    && rm -rf /home/wine/.wine/drive_c/users/wine/Temp/* \
+    && rm -f /home/wine/.wine/drive_c/windows/system32/plugplay.exe \
+    && rm -f /home/wine/.wine/drive_c/windows/system32/explorer.exe
 COPY uptool/iqapi /home/wine/iq-api
 
 # Correct X-perm warn
@@ -54,5 +56,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s \
 ENV PROD=
 ENV LOGIN=
 ENV PASS=
+
+# Go memory tuning: limit heap to 750MB (leaves ~250MB for Wine/Xvfb), GC more aggressively
+ENV GOMEMLIMIT=750MiB
+ENV GOGC=50
 
 CMD ["/home/wine/iq-api"]

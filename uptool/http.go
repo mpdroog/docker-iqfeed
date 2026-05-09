@@ -4,20 +4,28 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/itshosted/webutils/muxdoc"
-	"github.com/mpdroog/docker-iqfeed/iqapi/writer"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/itshosted/webutils/muxdoc"
+	"github.com/mpdroog/docker-iqfeed/iqapi/writer"
 )
 
 var (
 	mux muxdoc.MuxDoc
 	ln  net.Listener
+
+	// Pre-allocated to avoid allocations in hot paths
+	httpCRLF = []byte("\r\n")
+
+	// Pool for chunked stream writers (64KB each)
+	chunkWriterPool = sync.Pool{New: func() any { return bufio.NewWriterSize(nil, 64*1024) }}
 )
 
 // LH,2023-05-25,288.8400,272.8500,287.9100,280.9900,878367,0,
@@ -46,12 +54,14 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 		return
 	}
 
-	// buffer 1MB
-	ww := bufio.NewWriterSize(w, 1024*1024)
+	// Get pooled 64KB buffer (reduced from 1MB to lower memory footprint)
+	ww := chunkWriterPool.Get().(*bufio.Writer)
+	ww.Reset(w)
 	defer func() {
 		if e := ww.Flush(); e != nil {
 			slog.Error("HTTP[chunkedStream] Flush", "e", e.Error())
 		}
+		chunkWriterPool.Put(ww)
 	}()
 
 	i := 0
@@ -60,14 +70,14 @@ func chunkedStream(w http.ResponseWriter, r *http.Request, cmd []byte, csvHeader
 			if _, e := ww.Write(csvHeader); e != nil {
 				return e
 			}
-			if _, e := ww.Write([]byte("\r\n")); e != nil {
+			if _, e := ww.Write(httpCRLF); e != nil {
 				return e
 			}
 		}
 		if _, e := ww.Write(bin); e != nil {
 			return e
 		}
-		if _, e := ww.Write([]byte("\r\n")); e != nil {
+		if _, e := ww.Write(httpCRLF); e != nil {
 			return e
 		}
 
@@ -185,7 +195,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 	// Parse lines
 	var line SearchLine
 	if e := proxy(cmd, -1, func(bin []byte) error {
-		if bytes.Equal(bin, []byte(EOM)) || bytes.HasPrefix(bin, []byte("E,")) {
+		if bytes.Equal(bin, eomBytes) || bytes.HasPrefix(bin, errPrefix) {
 			return nil // skip protocol markers
 		}
 		csv, ok := enc.(writer.StringEncoder)
@@ -223,7 +233,7 @@ func search(w http.ResponseWriter, r *http.Request) {
 		if e := enc.Encode(line); e != nil {
 			return e
 		}
-		if _, e := w.Write([]byte("\r\n")); e != nil {
+		if _, e := w.Write(httpCRLF); e != nil {
 			return e
 		}
 
@@ -325,7 +335,7 @@ func data(w http.ResponseWriter, r *http.Request) {
 	out := make([]OHLC, 0, dp)
 	i := 0
 	if e := proxy(cmd, dp+1, func(bin []byte) error {
-		if bytes.Equal(bin, []byte(EOM)) || bytes.HasPrefix(bin, []byte("E,")) {
+		if bytes.Equal(bin, eomBytes) || bytes.HasPrefix(bin, errPrefix) {
 			return nil // skip protocol markers
 		}
 		buf := bytes.SplitN(bin, []byte(","), 9)
@@ -434,7 +444,7 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	i := 0
 	out := make([]OHLC, 0, dp)
 	if e := proxy(cmd, dp+100, func(bin []byte) error {
-		if bytes.Equal(bin, []byte(EOM)) || bytes.HasPrefix(bin, []byte("E,")) {
+		if bytes.Equal(bin, eomBytes) || bytes.HasPrefix(bin, errPrefix) {
 			return nil // skip protocol markers
 		}
 		buf := bytes.SplitN(bin, []byte(","), 9)

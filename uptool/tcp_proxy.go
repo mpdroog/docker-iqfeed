@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/maurice2k/tcpserver"
 	"log/slog"
+	"sync"
 	"time"
+
+	"github.com/maurice2k/tcpserver"
 )
 
 /** maxDatapoints is the maximum of data we allow in non-chunked mode (else you get timeouts) */
@@ -17,6 +19,25 @@ const defaultConnectTimeout = 3 * time.Second
 
 /** EOM is End Of Message stream */
 const EOM = "!ENDMSG!,"
+
+// Pre-allocated byte slices to avoid allocations in hot paths
+var (
+	eomBytes  = []byte(EOM)
+	crlfBytes = []byte("\r\n")
+	errPrefix = []byte("E,")
+
+	// Static error responses
+	errConnSetDeadline = []byte("E,CONN_SET_DEADLINE\r\n")
+	errConnReadCmd     = []byte("E,CONN_READ_CMD\r\n")
+	errProtocolOld     = []byte("E,PROTOCOL_DEPRECATED_NEED_6.2\r\n")
+	respProtocol62     = []byte("S,CURRENT PROTOCOL,6.2\r\n")
+)
+
+// Buffer pools to reduce allocations per connection
+var (
+	readerPool = sync.Pool{New: func() any { return bufio.NewReaderSize(nil, 4*1024) }}
+	writerPool = sync.Pool{New: func() any { return bufio.NewWriterSize(nil, 64*1024) }}
+)
 
 // ProtocolError represents an IQFeed protocol error (not a connection error)
 type ProtocolError struct {
@@ -54,14 +75,12 @@ func init() {
 }
 
 func isError(bin []byte) [][]byte {
-	if bytes.HasPrefix(bin, []byte("E,")) {
+	if bytes.HasPrefix(bin, errPrefix) {
 		// Error
 		// i.e. "E,!NO_DATA!,,", "E,Unauthorized user ID.,"
-		buf := bytes.SplitN(bin, []byte(","), 4)
-		return buf
+		return bytes.SplitN(bin, []byte(","), 4)
 	}
-
-	return [][]byte{}
+	return nil
 }
 
 // LineFunc is called on every line read and stops the proxy on error
@@ -114,7 +133,7 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 			return fmt.Errorf("ReadLine e=%s", e.Error())
 		}
 
-		if bytes.Equal(bin, []byte(EOM)) {
+		if bytes.Equal(bin, eomBytes) {
 			// Forward EOM to client, then done
 			if Verbose {
 				slog.Info("tcp_proxy(proxy) End of stream")
@@ -173,16 +192,23 @@ func tcpProxy(conn tcpserver.Connection) {
 		slog.Info("tcp_proxy new req")
 	}
 
-	r := bufio.NewReader(conn)
-	w := bufio.NewWriterSize(conn, 64*1024) // 64KB buffer (was 1MB - caused OOM)
-	defer w.Flush()
+	r := readerPool.Get().(*bufio.Reader)
+	r.Reset(conn)
+	defer readerPool.Put(r)
+
+	w := writerPool.Get().(*bufio.Writer)
+	w.Reset(conn)
+	defer func() {
+		w.Flush()
+		writerPool.Put(w)
+	}()
 
 	for {
 		// Start the clock
 		deadline := time.Now().Add(deadlineCmd)
 		if e := conn.SetDeadline(deadline); e != nil {
 			slog.Error("tcp_proxy setDeadline", "e", e.Error())
-			if _, e := w.Write([]byte("E,CONN_SET_DEADLINE\r\n")); e != nil {
+			if _, e := w.Write(errConnSetDeadline); e != nil {
 				slog.Error("tcp_proxy WriteSetDeadline", "e", e.Error())
 			}
 			return
@@ -192,7 +218,7 @@ func tcpProxy(conn tcpserver.Connection) {
 		bin, e := r.ReadBytes(byte('\n'))
 		if e != nil {
 			slog.Error("tcp_proxy readBytes", "e", e.Error())
-			if _, e := w.Write([]byte("E,CONN_READ_CMD\r\n")); e != nil {
+			if _, e := w.Write(errConnReadCmd); e != nil {
 				slog.Error("tcp_proxy writeConnReadCmd", "e", e.Error())
 			}
 			return
@@ -208,7 +234,7 @@ func tcpProxy(conn tcpserver.Connection) {
 				if Verbose {
 					slog.Info("tcp_proxy", "e", "PROTOCOL_DEPRECATED_NEED_6.2")
 				}
-				if _, e := w.Write([]byte("E,PROTOCOL_DEPRECATED_NEED_6.2\r\n")); e != nil {
+				if _, e := w.Write(errProtocolOld); e != nil {
 					slog.Error("tcp_proxy writeDeprecated", "e", e.Error())
 				}
 				return
@@ -217,7 +243,7 @@ func tcpProxy(conn tcpserver.Connection) {
 			if Verbose {
 				slog.Info("tcp_proxy fakeCurrentProtocol")
 			}
-			if _, e := w.Write([]byte("S,CURRENT PROTOCOL,6.2\r\n")); e != nil {
+			if _, e := w.Write(respProtocol62); e != nil {
 				slog.Error("tcp_proxy writeCurrentProtocol", "e", e.Error())
 			}
 			if e := w.Flush(); e != nil {
@@ -237,7 +263,7 @@ func tcpProxy(conn tcpserver.Connection) {
 			if _, e := w.Write(line); e != nil {
 				return fmt.Errorf("handleConn: conn.Write e=%s\n", e.Error())
 			}
-			if _, e := w.Write([]byte("\r\n")); e != nil {
+			if _, e := w.Write(crlfBytes); e != nil {
 				return fmt.Errorf("handleConn: conn.Write e=%s\n", e.Error())
 			}
 			return nil

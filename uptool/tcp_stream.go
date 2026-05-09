@@ -14,6 +14,12 @@ import (
 // streamIdleTimeout closes idle streaming connections to prevent goroutine leaks
 const streamIdleTimeout = 30 * time.Second
 
+// Pre-allocated error responses
+var (
+	streamErrNoDaemon = []byte("E,NO_DAEMON\r\n")
+	streamErrNoAdmin  = []byte("E,NO_ADMIN\r\n")
+)
+
 // timeoutReader wraps a reader and extends the connection deadline on each read
 type timeoutReader struct {
 	r    io.Reader
@@ -46,12 +52,12 @@ func streamProxy(conn tcpserver.Connection, upstreamAddr string, name string) {
 	// Check if iqfeed and admin are ready
 	if _, ok := Running.Load("iqfeed"); !ok {
 		slog.Warn("tcp_stream rejected - iqfeed not running", "name", name)
-		conn.Write([]byte("E,NO_DAEMON\r\n"))
+		conn.Write(streamErrNoDaemon)
 		return
 	}
 	if _, ok := Running.Load("admin"); !ok {
 		slog.Warn("tcp_stream rejected - admin not ready", "name", name)
-		conn.Write([]byte("E,NO_ADMIN\r\n"))
+		conn.Write(streamErrNoAdmin)
 		return
 	}
 

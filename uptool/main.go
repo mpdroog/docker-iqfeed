@@ -50,7 +50,7 @@ func main() {
 
 	// Config for all cmds
 	cmds := map[string]CmdInfo{
-		"xvfb": CmdInfo{Dep: "", Cmd: "/usr/bin/Xvfb", Args: []string{":0", "-screen", "0", "1024x768x24", "-noreset"}},
+		"xvfb": CmdInfo{Dep: "", Cmd: "/usr/bin/Xvfb", Args: []string{":0", "-screen", "0", "8x8x8", "-noreset", "-nolisten", "tcp"}},
 		"iqfeed": CmdInfo{Dep: "xvfb", Cmd: "wine64", Args: []string{
 			"/home/wine/.wine/drive_c/Program Files/DTN/IQFeed/iqconnect.exe",
 			"-product", prod,

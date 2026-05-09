@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -26,8 +27,15 @@ func (p *PoolConn) ReadLine() ([]byte, error) {
 	}
 	return bin, e
 }
+var poolCRLF = []byte("\r\n")
+
 func (p *PoolConn) WriteLine(str []byte) (int, error) {
-	return p.C.Write(append(str, []byte("\r\n")...))
+	n, e := p.C.Write(str)
+	if e != nil {
+		return n, e
+	}
+	n2, e := p.C.Write(poolCRLF)
+	return n + n2, e
 }
 func (p *PoolConn) IncreaseDeadline(deadline time.Duration) error {
 	if e := p.C.SetDeadline(time.Now().Add(deadline)); e != nil {
@@ -35,6 +43,8 @@ func (p *PoolConn) IncreaseDeadline(deadline time.Duration) error {
 	}
 	return nil
 }
+
+const maxPoolSize = 20 // limit pooled connections to bound memory usage
 
 var (
 	conns   map[string]*PoolConn
@@ -255,8 +265,17 @@ func FreeConn(n *PoolConn) {
 	}
 
 	mutex.Lock()
+	if len(conns) >= maxPoolSize {
+		// Pool full, close this connection instead of pooling
+		mutex.Unlock()
+		if _, e := n.WriteLine([]byte("QUIT")); e != nil {
+			slog.Warn("tcp_pool(FreeConn) QUIT (pool full)", "e", e.Error())
+		}
+		n.C.Close()
+		return
+	}
 	counter++
-	uniqid := fmt.Sprintf("%d", counter)
+	uniqid := strconv.Itoa(counter)
 	if _, inuse := conns[uniqid]; inuse {
 		// Should never happen, but log and close instead of panicking
 		slog.Error("tcp_pool(FreeConn) counter collision, closing conn", "uniqid", uniqid)
