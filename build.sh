@@ -3,9 +3,11 @@ set -euo pipefail
 IFS=$'\n\t'
 IQFEED_INSTALLER_BIN="iqfeed_client_6_2_0_25.exe"
 
-# Download IQFeed binary (so we only download it once)
-# mkdir cache
-# wget -nv http://www.iqfeed.net/$IQFEED_INSTALLER_BIN -O ./cache/$IQFEED_INSTALLER_BIN
+# Download IQFeed binary (if missing)
+if [ ! -f "./cache/$IQFEED_INSTALLER_BIN" ]; then
+    mkdir -p cache
+    wget -nv "http://www.iqfeed.net/$IQFEED_INSTALLER_BIN" -O "./cache/$IQFEED_INSTALLER_BIN"
+fi
 
 # Build the API-tool
 cd uptool
