@@ -9,13 +9,13 @@ import (
 	"sync"
 )
 
-const buffer1M = 1024
+const buffer1K = 1024
 
 var (
-	// BufioReader1MPool is a pool which returns bufio.Reader with a 1M buffer.
-	BufioReader1MPool *BufioReaderPool
-	// BufioWriter1MPool is a pool which returns bufio.Writer with a 1M buffer.
-	BufioWriter1MPool *BufioWriterPool
+	// BufioReader1KPool is a pool which returns bufio.Reader with a 1K buffer.
+	BufioReader1KPool *BufioReaderPool
+	// BufioWriter1KPool is a pool which returns bufio.Writer with a 1K buffer.
+	BufioWriter1KPool *BufioWriterPool
 )
 
 // BufioReaderPool is a bufio reader that uses sync.Pool.
@@ -24,8 +24,8 @@ type BufioReaderPool struct {
 }
 
 func init() {
-	BufioReader1MPool = newBufioReaderPoolWithSize(buffer1M)
-	BufioWriter1MPool = newBufioWriterPoolWithSize(buffer1M)
+	BufioReader1KPool = newBufioReaderPoolWithSize(buffer1K)
+	BufioWriter1KPool = newBufioWriterPoolWithSize(buffer1K)
 }
 
 // newBufioReaderPoolWithSize is unexported because new pools should be
@@ -56,9 +56,9 @@ func (bufPool *BufioReaderPool) Put(b *bufio.Reader) {
 
 // Copy is a convenience wrapper which uses a buffer to avoid allocation in io.Copy.
 func Copy(dst io.Writer, src io.Reader) (written int64, err error) {
-	buf := BufioReader1MPool.Get(src)
+	buf := BufioReader1KPool.Get(src)
 	written, err = io.Copy(dst, buf)
-	BufioReader1MPool.Put(buf)
+	BufioReader1KPool.Put(buf)
 	return
 }
 

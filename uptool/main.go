@@ -87,6 +87,10 @@ func main() {
 	//go keepalive("127.0.0.1:5009")
 	// HTTP-server
 	go httpListen(":8080")
+	// Level 1 streaming quotes
+	go startStreamServer(":5009", level1Proxy, "Level1")
+	// Level 2 market depth
+	go startStreamServer(":9200", level2Proxy, "Level2")
 
 	// TCP-server
 	{

@@ -185,6 +185,9 @@ func search(w http.ResponseWriter, r *http.Request) {
 	// Parse lines
 	var line SearchLine
 	if e := proxy(cmd, -1, func(bin []byte) error {
+		if bytes.Equal(bin, []byte(EOM)) || bytes.HasPrefix(bin, []byte("E,")) {
+			return nil // skip protocol markers
+		}
 		csv, ok := enc.(writer.StringEncoder)
 		if ok {
 			if i == 0 {
@@ -322,6 +325,9 @@ func data(w http.ResponseWriter, r *http.Request) {
 	out := make([]OHLC, 0, dp)
 	i := 0
 	if e := proxy(cmd, dp+1, func(bin []byte) error {
+		if bytes.Equal(bin, []byte(EOM)) || bytes.HasPrefix(bin, []byte("E,")) {
+			return nil // skip protocol markers
+		}
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 7 {
 			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)
@@ -428,6 +434,9 @@ func intervals(w http.ResponseWriter, r *http.Request) {
 	i := 0
 	out := make([]OHLC, 0, dp)
 	if e := proxy(cmd, dp+100, func(bin []byte) error {
+		if bytes.Equal(bin, []byte(EOM)) || bytes.HasPrefix(bin, []byte("E,")) {
+			return nil // skip protocol markers
+		}
 		buf := bytes.SplitN(bin, []byte(","), 9)
 		if len(buf) < 7 {
 			return fmt.Errorf("WARN: Failed parsing line=%s\n", bin)

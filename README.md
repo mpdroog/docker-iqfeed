@@ -33,16 +33,19 @@ cd -
 # Build the container
 docker build --tag 'mpdroog/docker-iqfeed:latest' -f Dockerfile .
 # Run it
-docker run -p 9100:9101 -p 8080:8080 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env mpdroog/docker-iqfeed
+docker run -p 9100:9101 -p 8080:8080 -p 5009:5009 -p 9200:9200 --cap-drop ALL --security-opt no-new-privileges --memory=256m --cpus=1 --rm --env-file iqfeed.env mpdroog/docker-iqfeed
 ```
 
 Ports
 =========
-This daemon offers the 'classic' TCP connection (9100) and HTTP (8080) for getting the ticker data out.
+This daemon offers the 'classic' TCP connection (9100) and HTTP-REST (8080) for getting the ticker data out.
+Additionally, Level 1 (streaming quotes) and Level 2 (market depth) are available as TCP proxies.
 
 ```
 LookupPort 9100 - Historical Data, Symbol Lookup, News Lookup, and Chains Lookup information
-HTTP 8080 - Historical Data
+HTTP 8080 - Historical Data, Symbol Lookup
+Level1 5009 - Streaming Level 1 quotes (watch symbols, get real-time updates)
+Level2 9200 - Market Depth (order book, price levels)
 ```
 
 HTTP example
@@ -78,7 +81,6 @@ $ telnet 0 9100
 Trying 0.0.0.0...
 Connected to 0.
 Escape character is '^]'.
-READY
 S,SET PROTOCOL,6.2
 S,CURRENT PROTOCOL,6.2
 HDX,MSTR,1
@@ -90,11 +92,50 @@ Connection closed by foreign host.
 
 For all accepted commands by IQFeed have a look at http://www.iqfeed.net/dev/api/docs/HistoricalviaTCPIP.cfm
 
-Difference with regular port 9100
+Level 1 example
 =========
-The TCP-server in this Docker container proxy's any commands to IQFeed (upstream). Because of this I've
-adjusted the code to send an `READY\r\n` from the server instead of waiting for the client to initiate the connection.
-(Motivation is that this way you can see why it failed)
+```bash
+$ telnet 0 5009
+Trying 0.0.0.0...
+Connected to 0.
+Escape character is '^]'.
+S,KEY,xxxxx
+S,SERVER CONNECTED
+S,CUST,...
+S,SET PROTOCOL,6.2
+S,CURRENT PROTOCOL,6.2
+wAAPL
+F,AAPL,...  (fundamental data)
+P,AAPL,...  (summary/snapshot)
+Q,AAPL,...  (streaming updates)
+Q,AAPL,...
+rAAPL
+quit
+```
+
+Commands: `w[SYMBOL]` watch, `r[SYMBOL]` unwatch, `S,SET PROTOCOL,6.2` set protocol.
+For all Level 1 commands see http://www.iqfeed.net/dev/api/docs/Level1viaTCPIP.cfm
+
+Level 2 example
+=========
+```bash
+$ telnet 0 9200
+Trying 0.0.0.0...
+Connected to 0.
+Escape character is '^]'.
+S,SERVER CONNECTED
+S,SET PROTOCOL,6.2
+S,CURRENT PROTOCOL,6.2
+WPL,@ESM25,10
+7,@ESM25,B,5000.00,150,5,2,...  (price level summary - bid)
+7,@ESM25,A,5001.00,120,3,2,...  (price level summary - ask)
+8,@ESM25,B,5000.00,155,6,2,...  (price level update)
+RPL,@ESM25
+quit
+```
+
+Commands: `WPL,[SYMBOL],[MaxLevels]` watch price levels, `RPL,[SYMBOL]` unwatch, `WOR,[SYMBOL]` watch orders.
+For all Level 2 commands see http://www.iqfeed.net/dev/api/docs/MarketDepth.cfm
 
 Logic
 =========
@@ -122,9 +163,9 @@ CONTAINER ID   IMAGE           COMMAND               CREATED          STATUS    
 
 docker exec -it PUT_CONTAINER_ID_HERE /bin/sh
 # Print current instance log
-cat /home/wine/DTN/IQFeed/IQConnectLog.txt
+cat /home/wine/.wine/drive_c/users/wine/Documents/DTN/IQFeed/IQConnectLog.txt
 # Print log of instance before it respawned
-cat /home/wine/DTN/IQFeed/IQConnectLog.txt.1
+cat /home/wine/IQConnectLog.crash.txt
 ```
 
 Errors for TCP-socket?

@@ -91,9 +91,7 @@ func ConnTest(conn *PoolConn, origin string) error {
 		}
 		if bytes.Equal(bin, []byte("E,!SYNTAX_ERROR!,")) {
 			if flushed > 0 {
-				slog.Warn("tcp_pool(ConnTest) remaining data", "origin", origin, "n", flushed, "timeout_extend", "+2sec")
-				// Increasing timeout to account for data that sticks in the queue
-				deadlineCmd = deadlineCmd + (time.Second * 2)
+				slog.Warn("tcp_pool(ConnTest) remaining data", "origin", origin, "n", flushed)
 			}
 
 			// reached end of data

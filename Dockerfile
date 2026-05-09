@@ -46,6 +46,8 @@ USER wine
 
 EXPOSE 9101
 EXPOSE 8080
+EXPOSE 5009
+EXPOSE 9200
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s \
     CMD wget -q --spider "http://127.0.0.1:8080/search?field=SYMBOL&search=GOOG&type=EQUITY" || exit 1

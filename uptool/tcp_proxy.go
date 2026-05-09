@@ -18,6 +18,15 @@ const defaultConnectTimeout = 3 * time.Second
 /** EOM is End Of Message stream */
 const EOM = "!ENDMSG!,"
 
+// ProtocolError represents an IQFeed protocol error (not a connection error)
+type ProtocolError struct {
+	Msg string
+}
+
+func (e *ProtocolError) Error() string {
+	return e.Msg
+}
+
 /** streamReplies are all cmds we expect more than 1 result (till EOM) */
 var streamReplies map[string]struct{}
 
@@ -84,6 +93,7 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		return e
 	}
 
+	var protocolErr error
 	i := 0
 	for {
 		// extend timeout with 5sec every line we receive
@@ -104,22 +114,31 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 			return fmt.Errorf("ReadLine e=%s", e.Error())
 		}
 
+		if bytes.Equal(bin, []byte(EOM)) {
+			// Forward EOM to client, then done
+			if Verbose {
+				slog.Info("tcp_proxy(proxy) End of stream")
+			}
+			if e := cb(bin); e != nil {
+				return e
+			}
+			break
+		}
+
 		if tok := isError(bin); len(tok) > 0 {
 			if Verbose {
 				slog.Info("tcp_proxy(proxy) isError", "stream", bin, "tok", tok)
 			}
+			// Forward error line to client, then store error and continue to EOM
+			if e := cb(bin); e != nil {
+				return e
+			}
 			if len(tok) < 2 {
-				return fmt.Errorf("%s", bin)
+				protocolErr = &ProtocolError{Msg: string(bin)}
+			} else {
+				protocolErr = &ProtocolError{Msg: string(tok[1])}
 			}
-			return fmt.Errorf("%s", tok[1])
-		}
-
-		if bytes.Equal(bin, []byte(EOM)) {
-			// Done!
-			if Verbose {
-				slog.Info("tcp_proxy(proxy) End of stream")
-			}
-			break
+			continue
 		}
 
 		i++
@@ -136,7 +155,7 @@ func proxy(cmd []byte, lineLimit int, cb LineFunc) error {
 		}
 	}
 
-	return nil
+	return protocolErr
 }
 
 /** tcpProxy is small conn.Accept handler that prepares upstream and
@@ -155,7 +174,7 @@ func tcpProxy(conn tcpserver.Connection) {
 	}
 
 	r := bufio.NewReader(conn)
-	w := bufio.NewWriterSize(conn, 1024*1024)
+	w := bufio.NewWriterSize(conn, 64*1024) // 64KB buffer (was 1MB - caused OOM)
 	defer w.Flush()
 
 	for {
@@ -209,7 +228,7 @@ func tcpProxy(conn tcpserver.Connection) {
 			continue
 		}
 
-		if e := proxy(bin, -1, func(line []byte) error {
+			if e := proxy(bin, -1, func(line []byte) error {
 			stop := time.Now().Add(deadlineCmd)
 			if e := conn.SetDeadline(stop); e != nil {
 				return fmt.Errorf("handleConn: conn.SetDeadline e=%s", e.Error())
@@ -224,11 +243,17 @@ func tcpProxy(conn tcpserver.Connection) {
 			return nil
 
 		}); e != nil {
-			slog.Error("tcp_proxy proxy", "e", e.Error())
-			if _, e := w.Write([]byte("E," + e.Error() + "\r\n")); e != nil {
-				slog.Error("tcp_proxy writeError", "e", e.Error())
+			if _, ok := e.(*ProtocolError); ok {
+				// Protocol errors (like !NO_DATA!) are already forwarded to client
+				// Don't close connection - client may send more requests
+				if Verbose {
+					slog.Info("tcp_proxy proxy protocol error", "e", e.Error())
+				}
+			} else {
+				// Connection error - close and exit
+				slog.Error("tcp_proxy proxy", "e", e.Error())
+				return
 			}
-			return
 		}
 
 		// Flush once done
